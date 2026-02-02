@@ -1,0 +1,108 @@
+.container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: var(--spacing-xl);
+    max-width: 800px;
+}
+
+.header {
+    margin-bottom: var(--spacing-xl);
+}
+
+.title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+}
+
+.sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.sectionTitle {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+.setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.setting:last-child {
+    border-bottom: none;
+}
+
+.settingInfo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.settingLabel {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+}
+
+.settingDesc {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+}
+
+.select {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    min-width: 180px;
+}
+
+.select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.about {
+    padding: var(--spacing-lg);
+    text-align: center;
+}
+
+.about p {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+}
+
+.aboutDesc {
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-normal) !important;
+    color: var(--color-text-tertiary) !important;
+}

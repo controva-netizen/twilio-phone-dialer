@@ -1,0 +1,257 @@
+/* Compact Dialer Bar */
+.dialerBar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    max-width: 500px;
+    width: 100%;
+}
+
+/* Icon Button */
+.iconBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.iconBtn:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.iconBtn.active {
+    background: var(--color-primary);
+    color: white;
+}
+
+/* Input */
+.input {
+    flex: 1;
+    min-width: 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
+.input::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* Call Button */
+.callBtn {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: white;
+    background: var(--color-text-muted);
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: not-allowed;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.callBtn.ready {
+    background: var(--color-success);
+    cursor: pointer;
+}
+
+.callBtn.ready:hover {
+    background: var(--color-success-hover);
+    box-shadow: 0 4px 12px var(--color-success-glow);
+}
+
+/* Keypad Wrapper (for positioning popover) */
+.keypadWrapper {
+    position: relative;
+}
+
+/* Floating Keypad Popover */
+.keypadPopover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 280px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    z-index: var(--z-popover);
+    animation: popoverIn 0.15s ease-out;
+    overflow: hidden;
+}
+
+@keyframes popoverIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.keypadHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.keypadTitle {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.keypadClose {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.keypadClose:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.keypadDisplay {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.backspace {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--color-text-tertiary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.backspace:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-danger);
+}
+
+/* Keypad Grid */
+.keypadGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: var(--spacing-sm);
+}
+
+.key {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 52px;
+    background: var(--color-bg-secondary);
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.key:hover {
+    background: var(--color-bg-hover);
+}
+
+.key:active {
+    background: var(--color-primary);
+    transform: scale(0.95);
+}
+
+.key:active .keyDigit,
+.key:active .keyLetters {
+    color: white;
+}
+
+.keyDigit {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+
+.keyLetters {
+    font-size: 9px;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+    letter-spacing: 1px;
+}
+
+/* Keypad Call Button */
+.keypadCall {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-sm);
+    padding: var(--spacing-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: white;
+    background: var(--color-text-muted);
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: not-allowed;
+    transition: all var(--transition-fast);
+}
+
+.keypadCall.active {
+    background: var(--color-success);
+    cursor: pointer;
+}
+
+.keypadCall.active:hover {
+    background: var(--color-success-hover);
+}

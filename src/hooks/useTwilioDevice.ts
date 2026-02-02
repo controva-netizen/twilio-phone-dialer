@@ -24,19 +24,30 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
     const deviceRef = useRef<Device | null>(null);
     const tokenRefreshTimeout = useRef<NodeJS.Timeout | null>(null);
+    const isDestroyed = useRef(false);
 
     // Initialize device with token
     const initializeDevice = useCallback(async () => {
+        // Don't initialize if component is being destroyed
+        if (isDestroyed.current) return;
+
         try {
             setStatus('connecting');
             setError(null);
 
             const { token } = await fetchToken();
 
+            // Check again after async operation
+            if (isDestroyed.current) return;
+
             // Create new device or update token
-            if (deviceRef.current) {
+            // Check if device exists and is not destroyed before updating token
+            if (deviceRef.current && deviceRef.current.state !== 'destroyed') {
                 await deviceRef.current.updateToken(token);
             } else {
+                // Clean up any existing destroyed device reference
+                deviceRef.current = null;
+
                 const newDevice = new Device(token, {
                     codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
                     allowIncomingWhileBusy: false,
@@ -76,6 +87,12 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
                 // Register the device
                 await newDevice.register();
 
+                // Check again after async operation
+                if (isDestroyed.current) {
+                    newDevice.destroy();
+                    return;
+                }
+
                 deviceRef.current = newDevice;
                 setDevice(newDevice);
             }
@@ -90,8 +107,10 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
         } catch (err) {
             console.error('Failed to initialize device:', err);
-            setError(err instanceof Error ? err.message : 'Failed to initialize device');
-            setStatus('error');
+            if (!isDestroyed.current) {
+                setError(err instanceof Error ? err.message : 'Failed to initialize device');
+                setStatus('error');
+            }
         }
     }, []);
 
@@ -143,6 +162,8 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
     // Initialize on mount
     useEffect(() => {
+        isDestroyed.current = false;
+
         if (config.twilioFunctionUrl) {
             initializeDevice();
         } else {
@@ -151,11 +172,13 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         }
 
         return () => {
+            isDestroyed.current = true;
             if (tokenRefreshTimeout.current) {
                 clearTimeout(tokenRefreshTimeout.current);
             }
             if (deviceRef.current) {
                 deviceRef.current.destroy();
+                deviceRef.current = null;
             }
         };
     }, [initializeDevice]);

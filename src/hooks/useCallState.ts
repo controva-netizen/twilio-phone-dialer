@@ -11,7 +11,7 @@ interface UseCallStateReturn {
     duration: number;
     direction: CallDirection | null;
     remoteNumber: string | null;
-    setActiveCall: (call: Call | null, direction: CallDirection) => void;
+    setActiveCall: (call: Call | null, direction: CallDirection, explicitNumber?: string) => void;
     hangup: () => void;
     toggleMute: () => void;
     sendDTMF: (digit: string) => void;
@@ -50,7 +50,7 @@ export function useCallState(): UseCallStateReturn {
     }, []);
 
     // Set active call with event listeners
-    const setActiveCall = useCallback((call: Call | null, callDirection: CallDirection) => {
+    const setActiveCall = useCallback((call: Call | null, callDirection: CallDirection, explicitNumber?: string) => {
         if (!call) {
             setActiveCallState(null);
             setCallStatus('idle');
@@ -66,10 +66,14 @@ export function useCallState(): UseCallStateReturn {
         setDirection(callDirection);
         setCallStatus('connecting');
 
-        // Get remote number
-        const params = call.parameters as { From?: string; To?: string };
-        const number = callDirection === 'incoming' ? params.From : params.To;
-        setRemoteNumber(number || 'Unknown');
+        // Get remote number - use explicit number if provided, otherwise try to get from call parameters
+        if (explicitNumber) {
+            setRemoteNumber(explicitNumber);
+        } else {
+            const params = call.parameters as { From?: string; To?: string };
+            const number = callDirection === 'incoming' ? params.From : params.To;
+            setRemoteNumber(number || 'Unknown');
+        }
 
         // Set up call event listeners
         call.on('ringing', () => {
