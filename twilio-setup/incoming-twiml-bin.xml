@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TwiML Bin: Incoming Calls
+  
+  SETUP:
+  1. Go to Twilio Console > TwiML Bins
+  2. Create a new TwiML Bin with a friendly name (e.g., "Incoming Call Handler")
+  3. Paste this XML content
+  4. Save and copy the TwiML Bin URL
+  5. Go to Phone Numbers > Your Number > Voice Configuration
+  6. Set "A call comes in" webhook to this TwiML Bin URL
+  
+  This routes incoming calls to the browser client named "user".
+  The client name must match the identity used when generating tokens.
+-->
+<Response>
+  <Dial>
+    <Client>user</Client>
+  </Dial>
+</Response>
