@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { UserMenu } from './UserMenu';
 import styles from './Header.module.css';
 
 type CallFilter = 'all' | 'incoming' | 'outgoing' | 'missed';
@@ -11,9 +12,10 @@ interface HeaderProps {
     callFilter?: CallFilter;
     deviceStatus?: DeviceStatus;
     error?: string | null;
+    user?: { email?: string | null };
 }
 
-export function Header({ onAccessibilityClick, callFilter, deviceStatus = 'offline', error }: HeaderProps) {
+export function Header({ onAccessibilityClick, callFilter, deviceStatus = 'offline', error, user }: HeaderProps) {
     const [showErrorTooltip, setShowErrorTooltip] = useState(false);
 
     // Get display label for current filter
@@ -91,11 +93,7 @@ export function Header({ onAccessibilityClick, callFilter, deviceStatus = 'offli
                     <AccessibilityIcon />
                 </button>
 
-                <div className={styles.userMenu}>
-                    <button className={styles.avatar} aria-label="User menu">
-                        <span>U</span>
-                    </button>
-                </div>
+                <UserMenu user={user} />
             </div>
         </header>
     );

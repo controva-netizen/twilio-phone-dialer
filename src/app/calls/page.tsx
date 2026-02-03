@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createClient } from '@/lib/supabase';
 import { AppLayout } from '@/components/Layout';
 import { CallHistoryList, IncomingCallBanner, ActiveCallPopup, RichDialer } from '@/components/Calls';
 import { AccessibilityPanel } from '@/components/AccessibilityPanel';
@@ -19,9 +20,20 @@ export default function CallsPage() {
     const [callFilter, setCallFilter] = useState<CallFilter>('all');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [showAccessibility, setShowAccessibility] = useState(false);
+    const [user, setUser] = useState<{ email?: string | null } | null>(null);
 
     // Track the number being called for history
     const dialedNumberRef = useRef<string>('');
+
+    // Fetch user session
+    useEffect(() => {
+        const fetchUser = async () => {
+            const supabase = createClient();
+            const { data: { user } } = await supabase.auth.getUser();
+            setUser(user);
+        };
+        fetchUser();
+    }, []);
 
     const isOnCall = callStatus === 'connected' || callStatus === 'connecting' || callStatus === 'ringing';
 
@@ -179,6 +191,7 @@ export default function CallsPage() {
             onCallFilterChange={handleFilterChange}
             deviceStatus={deviceStatus}
             error={error}
+            user={user || undefined}
         >
             {/* Accessibility Panel */}
             {showAccessibility && (
