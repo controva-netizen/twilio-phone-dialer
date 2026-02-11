@@ -176,7 +176,6 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     return twimlResponse(`
         <Response>
-            <Say voice="Polly.Joanna">Welcome to IQAAI Marketing helpline, please wait while we connect you to the nearest agent</Say>
             <Dial answerOnBridge="true"${recordAttr}${actionAttr} timeout="25">
                 <Client>${userId}</Client>
             </Dial>
