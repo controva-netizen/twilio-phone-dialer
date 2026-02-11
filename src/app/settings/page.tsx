@@ -12,12 +12,26 @@ interface PhoneNumber {
     is_default: boolean;
 }
 
+interface VoiceSettings {
+    call_recording_enabled: boolean;
+    voicemail_enabled: boolean;
+    voicemail_greeting_url: string | null;
+}
+
 export default function SettingsPage() {
     const [user, setUser] = useState<{ email?: string | null } | null>(null);
     const [numbers, setNumbers] = useState<PhoneNumber[]>([]);
     const [selectedNumber, setSelectedNumber] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+
+    // Voice settings
+    const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
+        call_recording_enabled: false,
+        voicemail_enabled: false,
+        voicemail_greeting_url: null,
+    });
+    const [savingVoice, setSavingVoice] = useState(false);
 
     // Fetch user and their phone numbers
     useEffect(() => {
@@ -40,9 +54,20 @@ export default function SettingsPage() {
                 }
             } catch (err) {
                 console.error('Failed to fetch numbers:', err);
-            } finally {
-                setLoading(false);
             }
+
+            // Fetch voice settings
+            try {
+                const res = await fetch('/api/user/voice-settings');
+                const data = await res.json();
+                if (!data.error) {
+                    setVoiceSettings(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch voice settings:', err);
+            }
+
+            setLoading(false);
         }
 
         fetchData();
@@ -63,6 +88,27 @@ export default function SettingsPage() {
             console.error('Failed to update default:', err);
         } finally {
             setSaving(false);
+        }
+    };
+
+    // Update a voice setting
+    const handleVoiceSettingChange = async (key: keyof VoiceSettings, value: boolean) => {
+        const newSettings = { ...voiceSettings, [key]: value };
+        setVoiceSettings(newSettings);
+        setSavingVoice(true);
+
+        try {
+            await fetch('/api/user/voice-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [key]: value }),
+            });
+        } catch (err) {
+            console.error('Failed to update voice setting:', err);
+            // Revert on error
+            setVoiceSettings(voiceSettings);
+        } finally {
+            setSavingVoice(false);
         }
     };
 
@@ -101,6 +147,48 @@ export default function SettingsPage() {
                                         ))}
                                     </select>
                                 )}
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Voice Features */}
+                    <section className={styles.section}>
+                        <h2 className={styles.sectionTitle}>
+                            Voice Features
+                            {savingVoice && <span className={styles.savingIndicator}> Saving...</span>}
+                        </h2>
+                        <div className={styles.card}>
+                            <div className={styles.setting}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>Call Recording</span>
+                                    <span className={styles.settingDesc}>Automatically record incoming calls</span>
+                                </div>
+                                <label className={styles.toggle}>
+                                    <input
+                                        type="checkbox"
+                                        className={styles.toggleInput}
+                                        checked={voiceSettings.call_recording_enabled}
+                                        onChange={(e) => handleVoiceSettingChange('call_recording_enabled', e.target.checked)}
+                                        disabled={loading || numbers.length === 0}
+                                    />
+                                    <span className={styles.toggleSlider}></span>
+                                </label>
+                            </div>
+                            <div className={styles.setting}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>Voicemail</span>
+                                    <span className={styles.settingDesc}>Send unanswered calls to voicemail</span>
+                                </div>
+                                <label className={styles.toggle}>
+                                    <input
+                                        type="checkbox"
+                                        className={styles.toggleInput}
+                                        checked={voiceSettings.voicemail_enabled}
+                                        onChange={(e) => handleVoiceSettingChange('voicemail_enabled', e.target.checked)}
+                                        disabled={loading || numbers.length === 0}
+                                    />
+                                    <span className={styles.toggleSlider}></span>
+                                </label>
                             </div>
                         </div>
                     </section>
@@ -163,3 +251,4 @@ export default function SettingsPage() {
         </AppLayout>
     );
 }
+

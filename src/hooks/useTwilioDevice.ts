@@ -164,10 +164,10 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     useEffect(() => {
         isDestroyed.current = false;
 
-        if (config.twilioFunctionUrl) {
+        if (config.tokenUrl) {
             initializeDevice();
         } else {
-            setError('Twilio Function URL not configured');
+            setError('Token URL not configured');
             setStatus('error');
         }
 

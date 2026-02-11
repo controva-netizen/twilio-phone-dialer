@@ -7,11 +7,7 @@ export interface TokenResponse {
 }
 
 export async function fetchToken(): Promise<TokenResponse> {
-    if (!config.twilioFunctionUrl) {
-        throw new Error('Twilio Function URL not configured');
-    }
-
-    const response = await fetch(config.twilioFunctionUrl, {
+    const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
