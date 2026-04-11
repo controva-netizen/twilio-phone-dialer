@@ -127,6 +127,7 @@ async function handleOutgoingCall(to: string, from: string): Promise<NextRespons
 
     return twimlResponse(`
         <Response>
+            
             <Dial answerOnBridge="true" callerId="${callerId}">
                 <Number>${to}</Number>
             </Dial>
@@ -163,11 +164,14 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
     const recordEnabled = numberRecord.call_recording_enabled
     const voicemailEnabled = numberRecord.voicemail_enabled
 
-    // Build the <Dial> verb
-    const recordAttr = recordEnabled ? ' record="record-from-answer-dual"' : ''
-
     // Build the app base URL from the incoming request (so it uses the ngrok/deployed URL)
     const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
+
+    // Build the <Dial> verb attributes
+    const recordAttr = recordEnabled ? ' record="record-from-answer-dual"' : ''
+    const recordCallbackAttr = recordEnabled
+        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${userId}" recordingStatusCallbackEvent="completed"`
+        : ''
 
     // If voicemail is enabled, set an action URL to handle no-answer
     const actionAttr = voicemailEnabled
@@ -176,7 +180,8 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     return twimlResponse(`
         <Response>
-            <Dial answerOnBridge="true"${recordAttr}${actionAttr} timeout="25">
+            <Say voice="Polly.Sofia"> Thank you for calling The Luminus Signage Solutions. You will be connected to a representative shortly. </Say>
+            <Dial answerOnBridge="true"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="25">
                 <Client>${userId}</Client>
             </Dial>
         </Response>

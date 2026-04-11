@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
     // Allow Twilio webhook requests through without auth
     // These routes come from Twilio servers, not the browser
     const pathname = request.nextUrl.pathname
-    if (pathname.startsWith('/api/twilio/webhook') || pathname.startsWith('/api/twilio/voicemail')) {
+    if (pathname.startsWith('/api/twilio/webhook') || pathname.startsWith('/api/twilio/voicemail') || pathname.startsWith('/api/twilio/recording-status')) {
         return NextResponse.next({ request })
     }
 

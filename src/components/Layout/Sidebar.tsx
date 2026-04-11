@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import styles from './Sidebar.module.css';
@@ -14,7 +14,27 @@ interface SidebarProps {
 
 export function Sidebar({ callFilter = 'all', onCallFilterChange }: SidebarProps) {
     const pathname = usePathname();
-    const [expandedSections, setExpandedSections] = useState<string[]>(['calls', 'messages', 'meetings']);
+    const [expandedSections, setExpandedSections] = useState<string[]>(['calls', 'recordings', 'messages', 'meetings']);
+    const [unreadVoicemails, setUnreadVoicemails] = useState(0);
+
+    const isRecordingsPage = pathname === '/recordings' || pathname.startsWith('/recordings/');
+
+    // Fetch unread voicemail count
+    useEffect(() => {
+        const fetchUnread = async () => {
+            try {
+                const res = await fetch('/api/user/recordings?type=voicemail');
+                if (res.ok) {
+                    const data = await res.json();
+                    setUnreadVoicemails(data.unreadVoicemails || 0);
+                }
+            } catch { /* ignore */ }
+        };
+        fetchUnread();
+        // Refresh every 30 seconds
+        const interval = setInterval(fetchUnread, 30000);
+        return () => clearInterval(interval);
+    }, []);
 
     const toggleSection = (section: string) => {
         setExpandedSections(prev =>
@@ -84,6 +104,40 @@ export function Sidebar({ callFilter = 'all', onCallFilterChange }: SidebarProps
                                 <MissedIcon />
                                 <span>Missed</span>
                             </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* RECORDINGS Section */}
+                <div className={styles.section}>
+                    <button
+                        className={styles.sectionHeader}
+                        onClick={() => toggleSection('recordings')}
+                        aria-expanded={expandedSections.includes('recordings')}
+                    >
+                        <ChevronIcon expanded={expandedSections.includes('recordings')} />
+                        <span>RECORDINGS</span>
+                    </button>
+
+                    {expandedSections.includes('recordings') && (
+                        <div className={styles.sectionItems}>
+                            <Link
+                                href="/recordings?tab=voicemail"
+                                className={`${styles.navItem} ${isRecordingsPage && pathname === '/recordings' ? styles.active : ''}`}
+                            >
+                                <VoicemailNavIcon />
+                                <span>Voicemails</span>
+                                {unreadVoicemails > 0 && (
+                                    <span className={styles.badgeCount}>{unreadVoicemails}</span>
+                                )}
+                            </Link>
+                            <Link
+                                href="/recordings?tab=call"
+                                className={`${styles.navItem} ${isRecordingsPage && pathname.includes('tab=call') ? styles.active : ''}`}
+                            >
+                                <RecordNavIcon />
+                                <span>Call recordings</span>
+                            </Link>
                         </div>
                     )}
                 </div>
@@ -221,6 +275,25 @@ function VideoIcon() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="23 7 16 12 23 17 23 7" />
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+    );
+}
+
+function VoicemailNavIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="5.5" cy="11.5" r="4.5" />
+            <circle cx="18.5" cy="11.5" r="4.5" />
+            <line x1="5.5" y1="16" x2="18.5" y2="16" />
+        </svg>
+    );
+}
+
+function RecordNavIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
         </svg>
     );
 }

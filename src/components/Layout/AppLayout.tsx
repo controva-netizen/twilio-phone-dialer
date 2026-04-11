@@ -3,22 +3,33 @@
 import React, { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { IncomingCallBanner, ActiveCallPopup } from '@/components/Calls';
+import { useTwilio } from '@/contexts/TwilioContext';
 import styles from './AppLayout.module.css';
 
 type CallFilter = 'all' | 'incoming' | 'outgoing' | 'missed';
-type DeviceStatus = 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
 
 interface AppLayoutProps {
     children: ReactNode;
     onAccessibilityClick?: () => void;
     callFilter?: CallFilter;
     onCallFilterChange?: (filter: CallFilter) => void;
-    deviceStatus?: DeviceStatus;
+    // These are now optional — falls back to context
+    deviceStatus?: 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
     error?: string | null;
     user?: { email?: string | null };
 }
 
-export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFilterChange, deviceStatus, error, user }: AppLayoutProps) {
+export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFilterChange, deviceStatus: propDeviceStatus, error: propError, user }: AppLayoutProps) {
+    const twilio = useTwilio();
+
+    // Use props if provided, otherwise fall back to context
+    const deviceStatus = propDeviceStatus || twilio.deviceStatus;
+    const error = propError !== undefined ? propError : twilio.deviceError;
+
+    const isOnCall = twilio.callStatus === 'connected' || twilio.callStatus === 'connecting' || twilio.callStatus === 'ringing';
+    const displayNumber = twilio.remoteNumber || 'Unknown';
+
     return (
         <div className="app">
             <Sidebar callFilter={callFilter} onCallFilterChange={onCallFilterChange} />
@@ -30,6 +41,28 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                     error={error}
                     user={user}
                 />
+
+                {/* Global Incoming Call Banner */}
+                {twilio.incomingCall && !twilio.activeCall && (
+                    <IncomingCallBanner
+                        callerNumber={(twilio.incomingCall.parameters as { From?: string }).From || 'Unknown'}
+                        onAccept={twilio.acceptIncomingCall}
+                        onReject={twilio.rejectIncomingCall}
+                    />
+                )}
+
+                {/* Global Active Call Popup */}
+                {isOnCall && (
+                    <ActiveCallPopup
+                        remoteNumber={displayNumber}
+                        duration={twilio.duration}
+                        isMuted={twilio.isMuted}
+                        onMuteToggle={twilio.toggleMute}
+                        onHangup={twilio.hangup}
+                        onDigit={twilio.sendDTMF}
+                    />
+                )}
+
                 <main className={styles.content}>
                     {children}
                 </main>
