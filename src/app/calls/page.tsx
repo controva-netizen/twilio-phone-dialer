@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { AppLayout } from '@/components/Layout';
 import { CallHistoryList, RichDialer } from '@/components/Calls';
+import { AutoDialer } from '@/components/AutoDialer';
 import { AccessibilityPanel } from '@/components/AccessibilityPanel';
 import { useTwilio } from '@/contexts/TwilioContext';
 import { useCallHistory, createCallHistoryEntry } from '@/hooks/useCallHistory';
@@ -18,6 +19,7 @@ export default function CallsPage() {
     const [callFilter, setCallFilter] = useState<CallFilter>('all');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [showAccessibility, setShowAccessibility] = useState(false);
+    const [showAutoDialer, setShowAutoDialer] = useState(false);
     const [user, setUser] = useState<{ email?: string | null } | null>(null);
 
     // Track the number being called for history
@@ -154,6 +156,22 @@ export default function CallsPage() {
                             onCall={() => handleCall()}
                             isReady={twilio.deviceStatus === 'ready'}
                         />
+                        <button
+                            className={`${styles.autoDialBtn} ${showAutoDialer ? styles.autoDialBtnActive : ''}`}
+                            onClick={() => setShowAutoDialer(v => !v)}
+                            title="Auto Dialer"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="18" height="18">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5M3.75 6.75h16.5M3.75 17.25h16.5" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
+
+                {/* Auto Dialer panel */}
+                {callFilter === 'all' && showAutoDialer && (
+                    <div className={styles.autoDialerSection}>
+                        <AutoDialer />
                     </div>
                 )}
 
