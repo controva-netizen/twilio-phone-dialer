@@ -56,7 +56,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request)
 
-        const to = params['To'] || ''
+        const to = params['ToNumber'] || params['To'] || ''
         const from = params['From'] || ''
         const callSid = params['CallSid'] || ''
         const direction = params['Direction'] || ''
@@ -70,7 +70,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         const isOutgoing = from.startsWith('client:') || (to && !to.startsWith('client:') && direction !== 'inbound')
 
         if (isOutgoing) {
-            return await handleOutgoingCall(to, from)
+            return await handleOutgoingCall(to, from, params)
         }
 
         // Incoming call (from phone number to Twilio number)
@@ -94,11 +94,11 @@ export async function GET(request: NextRequest) {
     return handleRequest(request)
 }
 
-async function handleOutgoingCall(to: string, from: string): Promise<NextResponse> {
+async function handleOutgoingCall(to: string, from: string, params: Record<string, string>): Promise<NextResponse> {
     if (!to) {
         return twimlResponse(`
             <Response>
-                <Say>No destination number provided.</Say>
+                <Say>Local test. No destination number provided. Keys are ${Object.keys(params).join(', ')}</Say>
             </Response>
         `)
     }

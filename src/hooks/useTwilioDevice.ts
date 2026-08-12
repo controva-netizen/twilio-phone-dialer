@@ -124,7 +124,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         try {
             setStatus('busy');
             const call = await deviceRef.current.connect({
-                params: { To: phoneNumber },
+                params: { ToNumber: phoneNumber },
             });
 
             call.on('disconnect', () => {
