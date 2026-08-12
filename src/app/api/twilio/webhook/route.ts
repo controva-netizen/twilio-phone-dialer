@@ -125,11 +125,13 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
 
     console.log(`[Twilio Webhook] Outgoing call to ${to} with callerId ${callerId}`)
 
+    const cleanTo = to.replace(/[^0-9+]/g, '')
+    
     return twimlResponse(`
         <Response>
             
             <Dial answerOnBridge="true" callerId="${callerId}">
-                <Number>${to}</Number>
+                <Number>${cleanTo}</Number>
             </Dial>
         </Response>
     `)
