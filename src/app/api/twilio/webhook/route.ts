@@ -31,23 +31,36 @@ function createSupabaseAdmin() {
 async function extractParams(request: NextRequest): Promise<Record<string, string>> {
     const params: Record<string, string> = {}
 
+    // 1. First check URL query params
+    request.nextUrl.searchParams.forEach((value, key) => {
+        params[key] = value
+    })
+
+    // 2. Parse POST body
     if (request.method === 'POST') {
         try {
-            const formData = await request.formData()
-            formData.forEach((value, key) => {
-                params[key] = value.toString()
-            })
-        } catch {
-            // fallback to query params
+            const contentType = request.headers.get('content-type') || ''
+            if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+                const formData = await request.formData()
+                formData.forEach((value, key) => {
+                    params[key] = value.toString()
+                })
+            } else if (contentType.includes('application/json')) {
+                const json = await request.json()
+                Object.entries(json).forEach(([k, v]) => {
+                    if (v !== undefined && v !== null) params[k] = String(v)
+                })
+            } else {
+                const rawText = await request.text()
+                const searchParams = new URLSearchParams(rawText)
+                searchParams.forEach((value, key) => {
+                    params[key] = value
+                })
+            }
+        } catch (e) {
+            console.error('[Twilio Webhook] Param extraction error:', e)
         }
     }
-
-    // Also check query params (GET requests or fallback)
-    request.nextUrl.searchParams.forEach((value, key) => {
-        if (!params[key]) {
-            params[key] = value
-        }
-    })
 
     return params
 }
@@ -56,18 +69,53 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request)
 
-        const to = params['ToNumber'] || params['To'] || ''
+        console.log('[Twilio Webhook] Received params:', JSON.stringify(params))
+
         const from = params['From'] || ''
-        const callSid = params['CallSid'] || ''
         const direction = params['Direction'] || ''
+        const callSid = params['CallSid'] || ''
 
-        console.log(`[Twilio Webhook] Direction: ${direction}, To: ${to}, From: ${from}, CallSid: ${callSid}`)
+        // Check all possible parameters for the destination number
+        let to = params['ToNumber'] || 
+                 params['phoneNumber'] || 
+                 params['PhoneNumber'] || 
+                 params['called'] || 
+                 params['Called'] || 
+                 params['destination'] || 
+                 params['number'] || 
+                 params['phone_number'] || 
+                 params['To'] || 
+                 ''
 
-        // Outgoing call: When browser client dials a number via TwiML App,
-        // Twilio sets From=client:xxx and Direction=inbound (counterintuitively).
-        // We detect outgoing by checking if From starts with "client:" 
-        // or if To is a phone number (not a client).
-        const isOutgoing = from.startsWith('client:') || (to && !to.startsWith('client:') && direction !== 'inbound')
+        // If 'to' is a TwiML App SID (starts with AP) or 'client:', look for the real destination number
+        if (to.startsWith('AP') || to.startsWith('client:') || !to) {
+            const possibleKeys = ['ToNumber', 'phoneNumber', 'PhoneNumber', 'called', 'Called', 'destination', 'number', 'phone_number']
+            for (const key of possibleKeys) {
+                if (params[key] && !params[key].startsWith('AP') && !params[key].startsWith('client:')) {
+                    to = params[key]
+                    break
+                }
+            }
+            // If still not found, check any param with digits
+            if (to.startsWith('AP') || to.startsWith('client:') || !to) {
+                const digitParam = Object.entries(params).find(([k, v]) => 
+                    !v.startsWith('AP') && 
+                    !v.startsWith('client:') && 
+                    !v.startsWith('CA') && 
+                    !v.startsWith('AC') && 
+                    v.replace(/[^0-9]/g, '').length >= 3
+                )
+                if (digitParam) {
+                    to = digitParam[1]
+                }
+            }
+        }
+
+        console.log(`[Twilio Webhook] Direction: ${direction}, Resolved To: ${to}, From: ${from}, CallSid: ${callSid}`)
+
+        // Outgoing call: When browser client dials via TwiML App,
+        // From starts with "client:" (e.g. client:user_id or client:anonymous)
+        const isOutgoing = from.startsWith('client:') || direction === 'outbound-api' || (to && !to.startsWith('client:') && !to.startsWith('AP') && direction !== 'inbound')
 
         if (isOutgoing) {
             return await handleOutgoingCall(to, from, params)
@@ -79,7 +127,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         console.error('[Twilio Webhook] Error:', error)
         return twimlResponse(`
             <Response>
-                <Say>An error occurred. Please try again later.</Say>
+                <Say>An error occurred. Please check server logs.</Say>
             </Response>
         `)
     }
@@ -95,10 +143,11 @@ export async function GET(request: NextRequest) {
 }
 
 async function handleOutgoingCall(to: string, from: string, params: Record<string, string>): Promise<NextResponse> {
-    if (!to) {
+    if (!to || to.startsWith('AP') || to.startsWith('client:')) {
+        console.error('[Twilio Webhook] No valid destination number in params:', params)
         return twimlResponse(`
             <Response>
-                <Say>Local test. No destination number provided. Keys are ${Object.keys(params).join(', ')}</Say>
+                <Say>No destination number was provided. Please check the dialed number and try again.</Say>
             </Response>
         `)
     }
@@ -109,17 +158,21 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     let callerId = process.env.TWILIO_DEFAULT_NUMBER || ''
 
     if (userId) {
-        const supabase = createSupabaseAdmin()
-        const { data } = await supabase
-            .from('user_phone_numbers')
-            .select('phone_number')
-            .eq('user_id', userId)
-            .eq('is_default', true)
-            .limit(1)
-            .single()
+        try {
+            const supabase = createSupabaseAdmin()
+            const { data } = await supabase
+                .from('user_phone_numbers')
+                .select('phone_number')
+                .eq('user_id', userId)
+                .eq('is_default', true)
+                .limit(1)
+                .single()
 
-        if (data?.phone_number) {
-            callerId = data.phone_number
+            if (data?.phone_number) {
+                callerId = data.phone_number
+            }
+        } catch (e) {
+            console.error('[Twilio Webhook] Error fetching default callerId from Supabase:', e)
         }
     }
 
@@ -129,7 +182,6 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     
     return twimlResponse(`
         <Response>
-            
             <Dial answerOnBridge="true" callerId="${callerId}">
                 <Number>${cleanTo}</Number>
             </Dial>
@@ -166,7 +218,7 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
     const recordEnabled = numberRecord.call_recording_enabled
     const voicemailEnabled = numberRecord.voicemail_enabled
 
-    // Build the app base URL from the incoming request (so it uses the ngrok/deployed URL)
+    // Build the app base URL from the incoming request
     const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
 
     // Build the <Dial> verb attributes
@@ -182,11 +234,10 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     return twimlResponse(`
         <Response>
-            <Say voice="Polly.Sofia"> Thank you for calling The Luminus Signage Solutions. You will be connected to a representative shortly. </Say>
+            <Say voice="Polly.Sofia">Thank you for calling. Please hold while we connect your call.</Say>
             <Dial answerOnBridge="true"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="25">
                 <Client>${userId}</Client>
             </Dial>
         </Response>
     `)
 }
-

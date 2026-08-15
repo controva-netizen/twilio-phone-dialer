@@ -123,8 +123,16 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
         try {
             setStatus('busy');
+            const cleanNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
+            console.log('[Twilio Device] Connecting outbound call to:', cleanNumber);
             const call = await deviceRef.current.connect({
-                params: { ToNumber: phoneNumber },
+                params: {
+                    ToNumber: cleanNumber,
+                    To: cleanNumber,
+                    phoneNumber: cleanNumber,
+                    destination: cleanNumber,
+                    called: cleanNumber,
+                },
             });
 
             call.on('disconnect', () => {
