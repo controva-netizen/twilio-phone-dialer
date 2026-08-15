@@ -1,36 +1,421 @@
-.main {
-  min-height: 100vh;
-  position: relative;
+.workspace {
+    padding: 24px 32px;
+    max-width: 1350px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
-.a11yButton {
-  position: fixed;
-  top: var(--spacing-lg);
-  right: var(--spacing-lg);
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-bg-card);
-  backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  z-index: 50;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow-md);
+/* Top Summary Stats Bar */
+.statsBar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
 }
 
-.a11yButton:hover {
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  transform: scale(1.05);
+.statCard {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
-.a11yButton:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+.statIconWallet {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #ecfdf5;
+    color: #059669;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.statIconPhone {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #e0e7fe;
+    color: #4338ca;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.statIconMic {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #fdf2f8;
+    color: #db2777;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.statIconVoicemail {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #fef3c7;
+    color: #d97706;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.statInfo {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.statLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.statValue {
+    font-size: 19px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.statValueSmall {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.statActionBtn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: #10b981;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.statActionBtn:hover {
+    background: #059669;
+}
+
+/* Main 2-Column Layout */
+.mainColumns {
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+/* Left Column: Softphone */
+.leftColumn {
+    display: flex;
+    flex-direction: column;
+}
+
+.dialerContainer {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.dialerHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.dialerTitle {
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.autoDialBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.autoDialBtn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.autoDialBtnActive {
+    background: #e0e7fe;
+    color: #3730a3;
+    border-color: #c7d2fe;
+}
+
+.keypadWrapper {
+    display: flex;
+    justify-content: center;
+}
+
+.autoDialerWrapper {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Right Column: Call History */
+.rightColumn {
+    display: flex;
+    flex-direction: column;
+}
+
+.historyContainer {
+    background: #ffffff;
+    border: 1px solid #f1f5f9;
+    border-radius: 18px;
+    padding: 20px 24px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    min-height: 480px;
+    display: flex;
+    flex-direction: column;
+}
+
+.historyHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.filterTabs {
+    display: flex;
+    gap: 4px;
+    background: #f8fafc;
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+}
+
+.tabBtn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #64748b;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tabBtn:hover {
+    color: #0f172a;
+}
+
+.tabActive {
+    background: #ffffff;
+    color: #3730a3;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.clearBtn {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ef4444;
+    background: transparent;
+    border: 1px solid #fee2e2;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.clearBtn:hover {
+    background: #fef2f2;
+}
+
+.historyBody {
+    flex: 1;
+    overflow-y: auto;
+    padding-top: 12px;
+}
+
+/* Modal */
+.modalBackdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modalContent {
+    background: #ffffff;
+    border-radius: 18px;
+    width: 100%;
+    max-width: 420px;
+    padding: 24px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+}
+
+.modalHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.modalTitle {
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.modalClose {
+    background: transparent;
+    border: none;
+    font-size: 22px;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+.modalBody {
+    margin-bottom: 20px;
+}
+
+.modalDesc {
+    font-size: 13.5px;
+    color: #475569;
+    margin-bottom: 14px;
+}
+
+.modalDesc strong {
+    color: #059669;
+}
+
+.amountLabel {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+
+.amountGrid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.amountOption {
+    padding: 10px 4px;
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.amountOption:hover {
+    border-color: #cbd5e1;
+}
+
+.amountSelected {
+    border-color: #10b981;
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+.modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.cancelBtn {
+    padding: 9px 16px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.confirmBtn {
+    padding: 9px 18px;
+    background: #10b981;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.confirmBtn:hover {
+    background: #059669;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .statsBar {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .mainColumns {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .statsBar {
+        grid-template-columns: 1fr;
+    }
+    .workspace {
+        padding: 16px;
+    }
 }

@@ -4,111 +4,113 @@ import React, { useState } from 'react';
 import { UserMenu } from './UserMenu';
 import styles from './Header.module.css';
 
-type CallFilter = 'all' | 'incoming' | 'outgoing' | 'missed';
-type DeviceStatus = 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
-
 interface HeaderProps {
     onAccessibilityClick?: () => void;
-    callFilter?: CallFilter;
-    deviceStatus?: DeviceStatus;
+    callFilter?: string;
+    deviceStatus?: 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
     error?: string | null;
     user?: { email?: string | null };
 }
 
-export function Header({ onAccessibilityClick, callFilter, deviceStatus = 'offline', error, user }: HeaderProps) {
-    const [showErrorTooltip, setShowErrorTooltip] = useState(false);
+export function Header({ deviceStatus = 'ready', error, user }: HeaderProps) {
+    const [balance, setBalance] = useState(25.00);
+    const [showTopUpModal, setShowTopUpModal] = useState(false);
+    const [selectedAmount, setSelectedAmount] = useState(10);
+    const [showStatusTooltip, setShowStatusTooltip] = useState(false);
 
-    // Get display label for current filter
-    const getFilterLabel = () => {
-        switch (callFilter) {
-            case 'all': return 'All calls';
-            case 'incoming': return 'Incoming calls';
-            case 'outgoing': return 'Outgoing calls';
-            case 'missed': return 'Missed calls';
-            default: return 'All calls';
-        }
-    };
-
-    // Get status text
-    const getStatusText = () => {
-        switch (deviceStatus) {
-            case 'ready': return 'Ready';
-            case 'connecting': return 'Connecting...';
-            case 'busy': return 'On Call';
-            case 'error': return 'Error';
-            default: return 'Offline';
-        }
-    };
-
-    const handleStatusClick = () => {
-        if (error) {
-            setShowErrorTooltip(!showErrorTooltip);
-        }
+    const handleAddFunds = (amount: number) => {
+        setBalance(prev => prev + amount);
+        setShowTopUpModal(false);
     };
 
     return (
         <header className={styles.header}>
-            {/* Left: Category Title */}
+            {/* Left: View title */}
             <div className={styles.left}>
-                <h1 className={styles.title}>{getFilterLabel()}</h1>
+                <div className={styles.titleWrapper}>
+                    <h1 className={styles.title}>Phone Dialer</h1>
+                    <span className={styles.subtitle}>WebRTC Cloud Calling Suite</span>
+                </div>
             </div>
 
-            {/* Right: Actions */}
+            {/* Right: Actions, Balance, and Status */}
             <div className={styles.right}>
+                {/* Balance Widget (Requested Feature) */}
+                <div className={styles.balanceWidget}>
+                    <div className={styles.balanceInfo}>
+                        <span className={styles.balanceLabel}>Balance</span>
+                        <span className={styles.balanceAmount}>${balance.toFixed(2)}</span>
+                    </div>
+                    <button
+                        className={styles.topUpBtn}
+                        onClick={() => setShowTopUpModal(true)}
+                        title="Add calling credits"
+                    >
+                        + Top Up
+                    </button>
+                </div>
+
                 {/* Connection Status */}
                 <div className={styles.statusWrapper}>
                     <button
-                        className={`${styles.status} ${styles[deviceStatus]} ${error ? styles.clickable : ''}`}
-                        onClick={handleStatusClick}
-                        title={error ? 'Click to see error details' : getStatusText()}
+                        className={`${styles.statusPill} ${styles[deviceStatus]}`}
+                        onClick={() => setShowStatusTooltip(!showStatusTooltip)}
+                        title={error || 'Twilio Device Status'}
                     >
                         <span className={styles.statusDot} />
-                        {getStatusText()}
+                        <span className={styles.statusText}>
+                            {deviceStatus === 'ready' ? 'Ready' : deviceStatus === 'busy' ? 'On Call' : deviceStatus === 'connecting' ? 'Connecting' : 'Offline'}
+                        </span>
                     </button>
 
-                    {/* Error Tooltip */}
-                    {showErrorTooltip && error && (
-                        <div className={styles.errorTooltip}>
-                            <div className={styles.errorTooltipHeader}>
-                                <span>Connection Error</span>
-                                <button
-                                    className={styles.errorTooltipClose}
-                                    onClick={() => setShowErrorTooltip(false)}
-                                    aria-label="Close"
-                                >
-                                    ×
-                                </button>
+                    {showStatusTooltip && (
+                        <div className={styles.statusTooltip}>
+                            <div className={styles.tooltipHeader}>
+                                <span>VoIP Line Status</span>
+                                <button onClick={() => setShowStatusTooltip(false)}>×</button>
                             </div>
-                            <p className={styles.errorTooltipMessage}>{error}</p>
+                            <div className={styles.tooltipBody}>
+                                <p><strong>Status:</strong> {deviceStatus === 'ready' ? 'Connected (Ready to dial)' : deviceStatus}</p>
+                                {error && <p className={styles.errorText}>{error}</p>}
+                            </div>
                         </div>
                     )}
                 </div>
 
-                <button
-                    className={styles.iconButton}
-                    onClick={onAccessibilityClick}
-                    aria-label="Accessibility settings"
-                    title="Accessibility"
-                >
-                    <AccessibilityIcon />
-                </button>
-
+                {/* User Menu */}
                 <UserMenu user={user} />
             </div>
+
+            {/* Top Up Modal */}
+            {showTopUpModal && (
+                <div className={styles.modalBackdrop} onClick={() => setShowTopUpModal(false)}>
+                    <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <h3 className={styles.modalTitle}>Recharge Account Balance</h3>
+                            <button className={styles.modalClose} onClick={() => setShowTopUpModal(false)}>×</button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <p className={styles.modalDesc}>Current calling balance: <strong>${balance.toFixed(2)}</strong></p>
+                            <label className={styles.amountLabel}>Choose Top-Up Amount:</label>
+                            <div className={styles.amountGrid}>
+                                {[10, 25, 50, 100].map(amt => (
+                                    <button
+                                        key={amt}
+                                        className={`${styles.amountOption} ${selectedAmount === amt ? styles.amountSelected : ''}`}
+                                        onClick={() => setSelectedAmount(amt)}
+                                    >
+                                        ${amt}.00
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className={styles.modalFooter}>
+                            <button className={styles.cancelBtn} onClick={() => setShowTopUpModal(false)}>Cancel</button>
+                            <button className={styles.confirmBtn} onClick={() => handleAddFunds(selectedAmount)}>Add ${selectedAmount}.00</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </header>
-    );
-}
-
-// Icons
-
-function AccessibilityIcon() {
-    return (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <circle cx="12" cy="7" r="1" fill="currentColor" />
-            <path d="M9 12h6" />
-            <path d="M12 12v5" />
-            <path d="M9 17l3-5 3 5" />
-        </svg>
     );
 }

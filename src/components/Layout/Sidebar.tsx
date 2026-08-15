@@ -5,293 +5,137 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import styles from './Sidebar.module.css';
 
-type CallFilter = 'all' | 'incoming' | 'outgoing' | 'missed';
-
 interface SidebarProps {
-    callFilter?: CallFilter;
-    onCallFilterChange?: (filter: CallFilter) => void;
+    callFilter?: string;
+    onCallFilterChange?: (filter: any) => void;
 }
 
-export function Sidebar({ callFilter = 'all', onCallFilterChange }: SidebarProps) {
+export function Sidebar({ }: SidebarProps) {
     const pathname = usePathname();
-    const [expandedSections, setExpandedSections] = useState<string[]>(['calls', 'recordings', 'messages', 'meetings']);
     const [unreadVoicemails, setUnreadVoicemails] = useState(0);
+    const [defaultNumber, setDefaultNumber] = useState<string>('');
 
-    const isRecordingsPage = pathname === '/recordings' || pathname.startsWith('/recordings/');
-
-    // Fetch unread voicemail count
+    // Fetch real unread voicemails and default caller ID
     useEffect(() => {
-        const fetchUnread = async () => {
+        const fetchMetadata = async () => {
             try {
-                const res = await fetch('/api/user/recordings?type=voicemail');
-                if (res.ok) {
-                    const data = await res.json();
+                // Fetch unread voicemails
+                const recRes = await fetch('/api/user/recordings?type=voicemail');
+                if (recRes.ok) {
+                    const data = await recRes.json();
                     setUnreadVoicemails(data.unreadVoicemails || 0);
                 }
-            } catch { /* ignore */ }
+
+                // Fetch default caller ID number
+                const numRes = await fetch('/api/user/numbers');
+                if (numRes.ok) {
+                    const data = await numRes.json();
+                    if (data.numbers && data.numbers.length > 0) {
+                        const def = data.numbers.find((n: any) => n.is_default) || data.numbers[0];
+                        setDefaultNumber(def.phone_number || '');
+                    }
+                }
+            } catch { }
         };
-        fetchUnread();
-        // Refresh every 30 seconds
-        const interval = setInterval(fetchUnread, 30000);
+
+        fetchMetadata();
+        const interval = setInterval(fetchMetadata, 30000);
         return () => clearInterval(interval);
     }, []);
 
-    const toggleSection = (section: string) => {
-        setExpandedSections(prev =>
-            prev.includes(section)
-                ? prev.filter(s => s !== section)
-                : [...prev, section]
-        );
-    };
-
-    const isCallsPage = pathname === '/calls' || pathname.startsWith('/calls/');
-
-    const handleFilterClick = (filter: CallFilter) => {
-        onCallFilterChange?.(filter);
-    };
+    const isDialerPage = pathname === '/' || pathname === '/calls' || pathname.startsWith('/calls/');
+    const isRecordingsPage = pathname === '/recordings' || pathname.startsWith('/recordings/');
+    const isSettingsPage = pathname === '/settings' || pathname.startsWith('/settings/');
 
     return (
         <aside className={styles.sidebar}>
-            {/* Logo Header */}
-            <div className={styles.header}>
-                <div className={styles.logo}>
-                    <LogoIcon />
-                    <span className={styles.logoText}>TwilioPhone</span>
+            {/* Marvik Dialer Logo Header */}
+            <div className={styles.brandHeader}>
+                <div className={styles.brandLogo}>
+                    <MarvikLogoIcon />
+                </div>
+                <div className={styles.brandInfo}>
+                    <span className={styles.brandName}>Marvik Dialer</span>
+                    <span className={styles.brandTag}>VoIP Phone System</span>
                 </div>
             </div>
 
-            {/* Navigation */}
+            {/* Navigation Menu (Legit Working Backend Features Only) */}
             <nav className={styles.nav}>
-                {/* CALL HISTORY Section */}
-                <div className={styles.section}>
-                    <button
-                        className={styles.sectionHeader}
-                        onClick={() => toggleSection('calls')}
-                        aria-expanded={expandedSections.includes('calls')}
+                <div className={styles.navList}>
+                    <Link
+                        href="/"
+                        className={`${styles.navItem} ${isDialerPage ? styles.active : ''}`}
                     >
-                        <ChevronIcon expanded={expandedSections.includes('calls')} />
-                        <span>CALL HISTORY</span>
-                    </button>
+                        <PhoneIcon />
+                        <span className={styles.navLabel}>Phone Dialer</span>
+                        <span className={styles.liveTag}>LIVE</span>
+                    </Link>
 
-                    {expandedSections.includes('calls') && (
-                        <div className={styles.sectionItems}>
-                            <Link
-                                href="/calls"
-                                className={`${styles.navItem} ${isCallsPage && callFilter === 'all' ? styles.active : ''}`}
-                                onClick={() => handleFilterClick('all')}
-                            >
-                                <AllCallsIcon />
-                                <span>All calls</span>
-                            </Link>
-                            <button
-                                className={`${styles.navItem} ${isCallsPage && callFilter === 'incoming' ? styles.active : ''}`}
-                                onClick={() => handleFilterClick('incoming')}
-                            >
-                                <IncomingIcon />
-                                <span>Incoming</span>
-                            </button>
-                            <button
-                                className={`${styles.navItem} ${isCallsPage && callFilter === 'outgoing' ? styles.active : ''}`}
-                                onClick={() => handleFilterClick('outgoing')}
-                            >
-                                <OutgoingIcon />
-                                <span>Outgoing</span>
-                            </button>
-                            <button
-                                className={`${styles.navItem} ${isCallsPage && callFilter === 'missed' ? styles.active : ''}`}
-                                onClick={() => handleFilterClick('missed')}
-                            >
-                                <MissedIcon />
-                                <span>Missed</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                {/* RECORDINGS Section */}
-                <div className={styles.section}>
-                    <button
-                        className={styles.sectionHeader}
-                        onClick={() => toggleSection('recordings')}
-                        aria-expanded={expandedSections.includes('recordings')}
+                    <Link
+                        href="/recordings"
+                        className={`${styles.navItem} ${isRecordingsPage ? styles.active : ''}`}
                     >
-                        <ChevronIcon expanded={expandedSections.includes('recordings')} />
-                        <span>RECORDINGS</span>
-                    </button>
+                        <RecordingIcon />
+                        <span className={styles.navLabel}>Recordings & Voicemail</span>
+                        {unreadVoicemails > 0 && (
+                            <span className={styles.badge}>{unreadVoicemails}</span>
+                        )}
+                    </Link>
 
-                    {expandedSections.includes('recordings') && (
-                        <div className={styles.sectionItems}>
-                            <Link
-                                href="/recordings?tab=voicemail"
-                                className={`${styles.navItem} ${isRecordingsPage && pathname === '/recordings' ? styles.active : ''}`}
-                            >
-                                <VoicemailNavIcon />
-                                <span>Voicemails</span>
-                                {unreadVoicemails > 0 && (
-                                    <span className={styles.badgeCount}>{unreadVoicemails}</span>
-                                )}
-                            </Link>
-                            <Link
-                                href="/recordings?tab=call"
-                                className={`${styles.navItem} ${isRecordingsPage && pathname.includes('tab=call') ? styles.active : ''}`}
-                            >
-                                <RecordNavIcon />
-                                <span>Call recordings</span>
-                            </Link>
-                        </div>
-                    )}
-                </div>
-
-                {/* MESSAGES Section */}
-                <div className={styles.section}>
-                    <button
-                        className={styles.sectionHeader}
-                        onClick={() => toggleSection('messages')}
-                        aria-expanded={expandedSections.includes('messages')}
+                    <Link
+                        href="/settings"
+                        className={`${styles.navItem} ${isSettingsPage ? styles.active : ''}`}
                     >
-                        <ChevronIcon expanded={expandedSections.includes('messages')} />
-                        <span>MESSAGES</span>
-                    </button>
-
-                    {expandedSections.includes('messages') && (
-                        <div className={styles.sectionItems}>
-                            <Link href="/messages" className={styles.navItem}>
-                                <MessageIcon />
-                                <span>All messages</span>
-                                <span className={styles.badge}>Soon</span>
-                            </Link>
-                        </div>
-                    )}
-                </div>
-
-                {/* MEETINGS Section */}
-                <div className={styles.section}>
-                    <button
-                        className={styles.sectionHeader}
-                        onClick={() => toggleSection('meetings')}
-                        aria-expanded={expandedSections.includes('meetings')}
-                    >
-                        <ChevronIcon expanded={expandedSections.includes('meetings')} />
-                        <span>MEETINGS</span>
-                    </button>
-
-                    {expandedSections.includes('meetings') && (
-                        <div className={styles.sectionItems}>
-                            <Link href="/meetings" className={styles.navItem}>
-                                <VideoIcon />
-                                <span>Video meetings</span>
-                                <span className={styles.badge}>Soon</span>
-                            </Link>
-                        </div>
-                    )}
+                        <SettingsIcon />
+                        <span className={styles.navLabel}>Settings & Numbers</span>
+                    </Link>
                 </div>
             </nav>
 
-            {/* Bottom */}
-            <div className={styles.bottom}>
-                <Link href="/settings" className={styles.navItem}>
-                    <SettingsIcon />
-                    <span>Settings</span>
-                </Link>
+            {/* Sidebar Bottom: Active Line Info */}
+            <div className={styles.sidebarFooter}>
+                <div className={styles.activeLineCard}>
+                    <div className={styles.lineHeader}>
+                        <span className={styles.lineDot} />
+                        <span className={styles.lineTitle}>Active Caller ID</span>
+                    </div>
+                    <div className={styles.lineNumber}>
+                        {defaultNumber || 'Twilio Default Line'}
+                    </div>
+                </div>
             </div>
         </aside>
     );
 }
 
 // Icons
-function LogoIcon() {
+function MarvikLogoIcon() {
     return (
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+                d="M4 19V5L12 13L20 5V19"
+                stroke="white"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <circle cx="12" cy="18.5" r="2" fill="#10B981" />
+        </svg>
+    );
+}
+
+function PhoneIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
         </svg>
     );
 }
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+function RecordingIcon() {
     return (
-        <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
-        >
-            <polyline points="9 18 15 12 9 6" />
-        </svg>
-    );
-}
-
-function AllCallsIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-        </svg>
-    );
-}
-
-function IncomingIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="16 3 21 3 21 8" />
-            <line x1="4" y1="20" x2="21" y2="3" />
-            <path d="M21 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-3.12-.8" />
-            <path d="M6.72 6.72A2 2 0 0 1 4.11 4h3" />
-        </svg>
-    );
-}
-
-function OutgoingIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="8 21 3 21 3 16" />
-            <line x1="20" y1="4" x2="3" y2="21" />
-            <path d="M21 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-3.12-.8" />
-            <path d="M6.72 6.72A2 2 0 0 1 4.11 4h3" />
-        </svg>
-    );
-}
-
-function MissedIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-    );
-}
-
-function MessageIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-    );
-}
-
-function VideoIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="23 7 16 12 23 17 23 7" />
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-        </svg>
-    );
-}
-
-function VoicemailNavIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="5.5" cy="11.5" r="4.5" />
-            <circle cx="18.5" cy="11.5" r="4.5" />
-            <line x1="5.5" y1="16" x2="18.5" y2="16" />
-        </svg>
-    );
-}
-
-function RecordNavIcon() {
-    return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />
         </svg>
@@ -300,7 +144,7 @@ function RecordNavIcon() {
 
 function SettingsIcon() {
     return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>

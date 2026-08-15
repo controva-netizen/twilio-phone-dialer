@@ -3,6 +3,7 @@
 import React, { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { GlobalDialerFAB } from './GlobalDialerFAB';
 import { IncomingCallBanner, ActiveCallPopup } from '@/components/Calls';
 import { useTwilio } from '@/contexts/TwilioContext';
 import styles from './AppLayout.module.css';
@@ -66,6 +67,9 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                 <main className={styles.content}>
                     {children}
                 </main>
+                
+                {/* Global FAB Dialer */}
+                <GlobalDialerFAB />
             </div>
         </div>
     );

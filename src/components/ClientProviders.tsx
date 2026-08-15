@@ -10,7 +10,7 @@ import { TwilioProvider } from '@/contexts/TwilioContext';
  */
 export function ClientProviders({ children }: { children: ReactNode }) {
     const pathname = usePathname();
-    const isAuthPage = pathname === '/login' || pathname === '/';
+    const isAuthPage = pathname === '/login';
 
     if (isAuthPage) {
         return <>{children}</>;
