@@ -95,6 +95,10 @@ export default function Home() {
         return history;
     };
 
+    // Call Strategy / Mode: direct | script | ai_agent
+    const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
+    const [selectedCampaign, setSelectedCampaign] = useState('Senior Sweepstakes Recovery (15 Rebuttals)');
+
     // Make Call
     const handleCall = async (numberToCallParam?: string) => {
         const numberToCall = numberToCallParam || phoneNumber;
@@ -102,7 +106,10 @@ export default function Home() {
 
         dialedNumberRef.current = numberToCall;
 
-        const call = await twilio.makeCall(numberToCall, selectedCallerId);
+        const call = await twilio.makeCall(numberToCall, selectedCallerId, {
+            callMode,
+            customGreeting: callMode === 'ai_agent' ? undefined : undefined,
+        });
         if (call) {
             twilio.setActiveCall(call, 'outgoing', numberToCall);
             setPhoneNumber('');
@@ -248,6 +255,45 @@ export default function Home() {
                                     <span>{showAutoDialer ? 'Close Campaign' : 'Auto Dialer'}</span>
                                 </button>
                             </div>
+
+                            {/* Call Strategy Selector Tabs */}
+                            <div className={styles.strategyTabs}>
+                                <button
+                                    className={`${styles.strategyBtn} ${callMode === 'direct' ? styles.strategyActive : ''}`}
+                                    onClick={() => setCallMode('direct')}
+                                >
+                                    ⚡ Direct Call
+                                </button>
+                                <button
+                                    className={`${styles.strategyBtn} ${callMode === 'script' ? styles.strategyActive : ''}`}
+                                    onClick={() => setCallMode('script')}
+                                >
+                                    🎙️ Intro Script
+                                </button>
+                                <button
+                                    className={`${styles.strategyBtn} ${callMode === 'ai_agent' ? styles.strategyActiveAI : ''}`}
+                                    onClick={() => setCallMode('ai_agent')}
+                                >
+                                    🤖 AI Voice Agent
+                                </button>
+                            </div>
+
+                            {/* Active AI Mode Banner */}
+                            {callMode === 'ai_agent' && (
+                                <div className={styles.aiBadge}>
+                                    <div className={styles.aiPulseDot}></div>
+                                    <div className={styles.aiBadgeText}>
+                                        <span className={styles.aiBadgeTitle}>AI Agent Armed (Replicate / Cerebras)</span>
+                                        <span className={styles.aiBadgeSub}>Pre-loaded: Senior Sweepstakes Recovery (15 Rebuttals)</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {callMode === 'script' && (
+                                <div className={styles.scriptBadge}>
+                                    <span>🎙️ Intro announcement plays on answer, then bridges to you.</span>
+                                </div>
+                            )}
 
                             {/* Auto Dialer Panel */}
                             {showAutoDialer ? (

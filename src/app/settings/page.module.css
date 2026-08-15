@@ -4,7 +4,7 @@
     flex-direction: column;
     overflow-y: auto;
     padding: var(--spacing-xl);
-    max-width: 800px;
+    max-width: 860px;
 }
 
 .header {
@@ -29,12 +29,35 @@
     gap: var(--spacing-md);
 }
 
+.sectionHeaderFlex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .sectionTitle {
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.templateBtn {
+    padding: 6px 12px;
+    background: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #ddd6fe;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.templateBtn:hover {
+    background: #ddd6fe;
+    color: #5b21b6;
 }
 
 .card {
@@ -56,6 +79,14 @@
     border-bottom: none;
 }
 
+.settingStacked {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
 .settingInfo {
     display: flex;
     flex-direction: column;
@@ -71,6 +102,109 @@
 .settingDesc {
     font-size: var(--font-size-sm);
     color: var(--color-text-tertiary);
+}
+
+.formRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+@media (max-width: 640px) {
+    .formRow {
+        grid-template-columns: 1fr;
+    }
+}
+
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.inputField {
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    outline: none;
+}
+
+.inputFieldFull {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    outline: none;
+}
+
+.inputField:focus, .inputFieldFull:focus, .textareaPrompt:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.inputHelp {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+}
+
+.textareaPrompt {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    outline: none;
+    resize: vertical;
+}
+
+.cardActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    padding: 14px var(--spacing-lg);
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.saveSuccessMsg {
+    font-size: 13px;
+    font-weight: 600;
+    color: #10b981;
+}
+
+.saveAIBtn {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+}
+
+.saveAIBtn:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+
+.saveAIBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .select {

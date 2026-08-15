@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { AppLayout } from '@/components/Layout';
+import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT, DEFAULT_SWEEPSTAKES_CONFIG } from '@/lib/ai/prompts';
 import styles from './page.module.css';
 
 interface PhoneNumber {
@@ -16,6 +17,17 @@ interface VoiceSettings {
     call_recording_enabled: boolean;
     voicemail_enabled: boolean;
     voicemail_greeting_url: string | null;
+}
+
+interface AISettings {
+    replicate_api_token: string;
+    cerebras_api_key: string;
+    deepgram_api_key: string;
+    cartesia_api_key: string;
+    ai_voice: string;
+    system_prompt: string;
+    transfer_keywords: string;
+    max_turns: number;
 }
 
 export default function SettingsPage() {
@@ -32,6 +44,20 @@ export default function SettingsPage() {
         voicemail_greeting_url: null,
     });
     const [savingVoice, setSavingVoice] = useState(false);
+
+    // AI Settings
+    const [aiSettings, setAiSettings] = useState<AISettings>({
+        replicate_api_token: '',
+        cerebras_api_key: '',
+        deepgram_api_key: '',
+        cartesia_api_key: '',
+        ai_voice: 'Polly.Danielle-Neural',
+        system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
+        transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
+        max_turns: 6,
+    });
+    const [savingAI, setSavingAI] = useState(false);
+    const [aiSavedSuccess, setAiSavedSuccess] = useState(false);
 
     // Fetch user and their phone numbers
     useEffect(() => {
@@ -65,6 +91,17 @@ export default function SettingsPage() {
                 }
             } catch (err) {
                 console.error('Failed to fetch voice settings:', err);
+            }
+
+            // Fetch AI settings
+            try {
+                const res = await fetch('/api/user/ai-settings');
+                const data = await res.json();
+                if (data && !data.error) {
+                    setAiSettings(prev => ({ ...prev, ...data }));
+                }
+            } catch (err) {
+                console.error('Failed to fetch AI settings:', err);
             }
 
             setLoading(false);
@@ -105,11 +142,37 @@ export default function SettingsPage() {
             });
         } catch (err) {
             console.error('Failed to update voice setting:', err);
-            // Revert on error
             setVoiceSettings(voiceSettings);
         } finally {
             setSavingVoice(false);
         }
+    };
+
+    // Save AI Settings
+    const handleSaveAISettings = async () => {
+        setSavingAI(true);
+        setAiSavedSuccess(false);
+        try {
+            await fetch('/api/user/ai-settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(aiSettings),
+            });
+            setAiSavedSuccess(true);
+            setTimeout(() => setAiSavedSuccess(false), 3000);
+        } catch (err) {
+            console.error('Failed to save AI settings:', err);
+        } finally {
+            setSavingAI(false);
+        }
+    };
+
+    const handleLoadSweepstakesTemplate = () => {
+        setAiSettings(prev => ({
+            ...prev,
+            system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
+            transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
+        }));
     };
 
     return (
@@ -120,6 +183,107 @@ export default function SettingsPage() {
                 </div>
 
                 <div className={styles.sections}>
+                    {/* AI Voice Agent & Knowledge Base */}
+                    <section className={styles.section}>
+                        <div className={styles.sectionHeaderFlex}>
+                            <h2 className={styles.sectionTitle}>🤖 AI Voice Agent & Script Engine</h2>
+                            <button
+                                className={styles.templateBtn}
+                                onClick={handleLoadSweepstakesTemplate}
+                                title="Load Senior Sweepstakes Recovery Script & 15 Rebuttals"
+                            >
+                                📋 Reload Sweepstakes Script
+                            </button>
+                        </div>
+                        <div className={styles.card}>
+                            {/* API Keys */}
+                            <div className={styles.formRow}>
+                                <div className={styles.formGroup}>
+                                    <label className={styles.settingLabel}>Replicate API Token (Llama 3)</label>
+                                    <input
+                                        type="password"
+                                        className={styles.inputField}
+                                        placeholder="r8_xxxxxxxxxxxxxxxxxxxx"
+                                        value={aiSettings.replicate_api_token}
+                                        onChange={(e) => setAiSettings({ ...aiSettings, replicate_api_token: e.target.value })}
+                                    />
+                                    <span className={styles.inputHelp}>Used for Llama 3 70B conversational reasoning.</span>
+                                </div>
+                                <div className={styles.formGroup}>
+                                    <label className={styles.settingLabel}>Cerebras API Key (Ultra-Fast Inference)</label>
+                                    <input
+                                        type="password"
+                                        className={styles.inputField}
+                                        placeholder="csk-xxxxxxxxxxxxxxxxxxxx"
+                                        value={aiSettings.cerebras_api_key}
+                                        onChange={(e) => setAiSettings({ ...aiSettings, cerebras_api_key: e.target.value })}
+                                    />
+                                    <span className={styles.inputHelp}>Primary fast LLM engine with Replicate fallback.</span>
+                                </div>
+                            </div>
+
+                            {/* Voice Picker */}
+                            <div className={styles.setting}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>AI Voice Actor (Polly Neural)</span>
+                                    <span className={styles.settingDesc}>Natural neural voice used during caller dialogue</span>
+                                </div>
+                                <select
+                                    className={styles.select}
+                                    value={aiSettings.ai_voice}
+                                    onChange={(e) => setAiSettings({ ...aiSettings, ai_voice: e.target.value })}
+                                >
+                                    <option value="Polly.Danielle-Neural">Danielle (US Female - Authoritative & Warm)</option>
+                                    <option value="Polly.Matthew-Neural">Matthew (US Male - Professional Executive)</option>
+                                    <option value="Polly.Joanna-Neural">Joanna (US Female - Clear & Conversational)</option>
+                                    <option value="Polly.Stephen-Neural">Stephen (US Male - Friendly Advisor)</option>
+                                    <option value="Polly.Ruth-Neural">Ruth (US Female - Senior Recovery Specialist)</option>
+                                </select>
+                            </div>
+
+                            {/* Transfer Keywords */}
+                            <div className={styles.settingStacked}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>Transfer Trigger Keywords</span>
+                                    <span className={styles.settingDesc}>Phrases that automatically bridge the live call to your softphone</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    className={styles.inputFieldFull}
+                                    value={aiSettings.transfer_keywords}
+                                    onChange={(e) => setAiSettings({ ...aiSettings, transfer_keywords: e.target.value })}
+                                    placeholder="speak to someone, human, representative, specialist, transfer"
+                                />
+                            </div>
+
+                            {/* System Prompt & Rebuttal Knowledge Base */}
+                            <div className={styles.settingStacked}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>AI System Prompt & 15 Rebuttals Knowledge Base</span>
+                                    <span className={styles.settingDesc}>Full script flow, persona instructions, and objection responses</span>
+                                </div>
+                                <textarea
+                                    className={styles.textareaPrompt}
+                                    rows={10}
+                                    value={aiSettings.system_prompt}
+                                    onChange={(e) => setAiSettings({ ...aiSettings, system_prompt: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Save AI Settings Button */}
+                            <div className={styles.cardActions}>
+                                {aiSavedSuccess && <span className={styles.saveSuccessMsg}>✓ AI Settings Saved!</span>}
+                                <button
+                                    className={styles.saveAIBtn}
+                                    onClick={handleSaveAISettings}
+                                    disabled={savingAI}
+                                >
+                                    {savingAI ? 'Saving...' : 'Save AI Configuration'}
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
                     {/* Phone Number Settings */}
                     <section className={styles.section}>
                         <h2 className={styles.sectionTitle}>Phone Number</h2>
@@ -193,31 +357,6 @@ export default function SettingsPage() {
                         </div>
                     </section>
 
-                    {/* Audio Settings */}
-                    <section className={styles.section}>
-                        <h2 className={styles.sectionTitle}>Audio</h2>
-                        <div className={styles.card}>
-                            <div className={styles.setting}>
-                                <div className={styles.settingInfo}>
-                                    <span className={styles.settingLabel}>Speaker</span>
-                                    <span className={styles.settingDesc}>Select your audio output device</span>
-                                </div>
-                                <select className={styles.select}>
-                                    <option>Default Speaker</option>
-                                </select>
-                            </div>
-                            <div className={styles.setting}>
-                                <div className={styles.settingInfo}>
-                                    <span className={styles.settingLabel}>Microphone</span>
-                                    <span className={styles.settingDesc}>Select your audio input device</span>
-                                </div>
-                                <select className={styles.select}>
-                                    <option>Default Microphone</option>
-                                </select>
-                            </div>
-                        </div>
-                    </section>
-
                     {/* Appearance */}
                     <section className={styles.section}>
                         <h2 className={styles.sectionTitle}>Appearance</h2>
@@ -228,8 +367,8 @@ export default function SettingsPage() {
                                     <span className={styles.settingDesc}>Choose your preferred color theme</span>
                                 </div>
                                 <select className={styles.select}>
-                                    <option value="dark">Dark</option>
                                     <option value="light">Light</option>
+                                    <option value="dark">Dark</option>
                                     <option value="system">System</option>
                                 </select>
                             </div>
@@ -241,8 +380,8 @@ export default function SettingsPage() {
                         <h2 className={styles.sectionTitle}>About</h2>
                         <div className={styles.card}>
                             <div className={styles.about}>
-                                <p>TwilioPhone v1.0.0</p>
-                                <p className={styles.aboutDesc}>Browser-based calling powered by Twilio Voice SDK</p>
+                                <p><strong>Marvik Dialer v2.0</strong></p>
+                                <p className={styles.aboutDesc}>AI Voice Agent & Telephony System powered by Twilio, Replicate, Cerebras, and Deepgram</p>
                             </div>
                         </div>
                     </section>
@@ -251,4 +390,3 @@ export default function SettingsPage() {
         </AppLayout>
     );
 }
-

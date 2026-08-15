@@ -6,13 +6,15 @@ import { useTwilioDevice } from '@/hooks/useTwilioDevice';
 import { useCallState } from '@/hooks/useCallState';
 import type { DeviceStatus, CallStatus, CallDirection } from '@/types';
 
+import { CallOptions } from '@/hooks/useTwilioDevice';
+
 interface TwilioContextValue {
     // Device
     device: ReturnType<typeof useTwilioDevice>['device'];
     deviceStatus: DeviceStatus;
     deviceError: string | null;
     incomingCall: Call | null;
-    makeCall: (phoneNumber: string, callerId?: string) => Promise<Call | null>;
+    makeCall: (phoneNumber: string, callerId?: string, options?: CallOptions) => Promise<Call | null>;
     acceptIncomingCall: () => void;
     rejectIncomingCall: () => void;
 

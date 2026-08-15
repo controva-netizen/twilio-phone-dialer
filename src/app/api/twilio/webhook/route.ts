@@ -130,7 +130,7 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         const isOutgoing = from.startsWith('client:') || direction === 'outbound-api' || (to && !to.startsWith('client:') && !to.startsWith('AP') && direction !== 'inbound')
 
         if (isOutgoing) {
-            return await handleOutgoingCall(to, from, params)
+            return await handleOutgoingCall(to, from, params, request)
         }
 
         // Incoming call (from phone number to Twilio number)
@@ -154,7 +154,7 @@ export async function GET(request: NextRequest) {
     return handleRequest(request)
 }
 
-async function handleOutgoingCall(to: string, from: string, params: Record<string, string>): Promise<NextResponse> {
+async function handleOutgoingCall(to: string, from: string, params: Record<string, string>, request: NextRequest): Promise<NextResponse> {
     if (!to || to.startsWith('AP') || to.startsWith('client:')) {
         console.error('[Twilio Webhook] No valid destination number in params:', params)
         return twimlResponse(`
@@ -236,8 +236,40 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     // Strictly format callerId to E.164 format (+1XXXXXXXXXX)
     callerId = formatE164(callerId) || '+13072076444'
 
-    console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with verified callerId ${callerId}`)
+    // Check call mode: 'direct' | 'script' | 'ai_agent'
+    const callMode = (params['callMode'] || params['mode'] || 'direct').toLowerCase()
+    const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
+
+    console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with mode=${callMode}, verified callerId=${callerId}`)
     
+    // Mode 1: AI Agent (Auto-handles conversation and transfers when ready)
+    if (callMode === 'ai_agent') {
+        const greeting = params['customGreeting'] || `Hello! My name is Officer Alex with the Federal Consumer Award Oversight Bureau. I am calling regarding a time-sensitive unclaimed consumer award file for $950,000. Are you available for just a moment so I can share the details with you?`
+        const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=1`
+
+        return twimlResponse(`
+            <Response>
+                <Gather input="speech dtmf" timeout="5" speechTimeout="auto" action="${turnActionUrl}">
+                    <Say voice="Polly.Danielle-Neural">${greeting}</Say>
+                </Gather>
+            </Response>
+        `)
+    }
+
+    // Mode 2: Script Intro + Auto-Transfer
+    if (callMode === 'script') {
+        const scriptText = params['customScript'] || `Hello! Thank you for taking our call regarding your inquiry. Please hold for one second while I connect you directly with our senior specialist.`
+        return twimlResponse(`
+            <Response>
+                <Say voice="Polly.Danielle-Neural">${scriptText}</Say>
+                <Dial answerOnBridge="true" callerId="${callerId}">
+                    <Number>${cleanTo}</Number>
+                </Dial>
+            </Response>
+        `)
+    }
+
+    // Mode 3: Direct Softphone Call (Default)
     return twimlResponse(`
         <Response>
             <Dial answerOnBridge="true" callerId="${callerId}">

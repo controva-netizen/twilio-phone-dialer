@@ -27,17 +27,21 @@ export async function middleware(request: NextRequest) {
         }
     )
 
-    // Allow Twilio webhook requests through without auth
-    // These routes come from Twilio servers, not the browser
-    // Mobile API routes authenticate themselves via Bearer token
+    // Allow Twilio webhook requests and Mobile API routes through without browser auth
+    // These routes come from Twilio servers, background webhooks, or mobile clients with Bearer tokens
     const pathname = request.nextUrl.pathname
-    if (pathname.startsWith('/api/twilio/webhook') || pathname.startsWith('/api/twilio/voicemail') || pathname.startsWith('/api/twilio/recording-status') || pathname.startsWith('/api/mobile')) {
-        return NextResponse.next({ request })
+    if (pathname.startsWith('/api/twilio/') || pathname.startsWith('/api/mobile')) {
+        return supabaseResponse
     }
 
     const {
         data: { user },
     } = await supabase.auth.getUser()
+
+    // Allow all API routes to handle their own authentication/response format
+    if (pathname.startsWith('/api/')) {
+        return supabaseResponse
+    }
 
     // Redirect to login if not authenticated and not on login page
     if (!user && !pathname.startsWith('/login')) {
