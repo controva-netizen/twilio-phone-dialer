@@ -13,6 +13,17 @@ function twimlResponse(twiml: string): NextResponse {
     })
 }
 
+// Ensure phone numbers are strictly in E.164 format (+1XXXXXXXXXX)
+function formatE164(phone: string): string {
+    if (!phone) return ''
+    const clean = phone.replace(/[^0-9+]/g, '')
+    if (!clean) return ''
+    if (clean.startsWith('+')) return clean
+    if (clean.length === 10) return `+1${clean}`
+    if (clean.length === 11 && clean.startsWith('1')) return `+${clean}`
+    return `+${clean}`
+}
+
 // Create a Supabase client without cookies (webhook requests come from Twilio, not browser)
 function createSupabaseAdmin() {
     return createServerClient(
@@ -152,15 +163,26 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
         `)
     }
 
-    // Look up the caller's default number from Supabase
-    // The "from" field is "client:userId"
-    const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
-    let callerId = process.env.TWILIO_DEFAULT_NUMBER || ''
+    const cleanTo = formatE164(to)
 
+    // 1. Check if callerId was explicitly sent in params from the client
+    let callerId = params['callerId'] || 
+                   params['CallerId'] || 
+                   params['fromNumber'] || 
+                   params['FromNumber'] || 
+                   process.env.TWILIO_DEFAULT_NUMBER || 
+                   process.env.TWILIO_PHONE_NUMBER || 
+                   process.env.TWILIO_CALLER_ID || 
+                   ''
+
+    // 2. Look up the caller's default number from Supabase
+    const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
     if (userId) {
         try {
             const supabase = createSupabaseAdmin()
-            const { data } = await supabase
+            
+            // Check user's default number
+            const { data: defaultData } = await supabase
                 .from('user_phone_numbers')
                 .select('phone_number')
                 .eq('user_id', userId)
@@ -168,17 +190,56 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
                 .limit(1)
                 .single()
 
-            if (data?.phone_number) {
-                callerId = data.phone_number
+            if (defaultData?.phone_number) {
+                callerId = defaultData.phone_number
+            } else {
+                // Check any assigned number for this user
+                const { data: anyData } = await supabase
+                    .from('user_phone_numbers')
+                    .select('phone_number')
+                    .eq('user_id', userId)
+                    .limit(1)
+                    .single()
+
+                if (anyData?.phone_number) {
+                    callerId = anyData.phone_number
+                }
             }
         } catch (e) {
-            console.error('[Twilio Webhook] Error fetching default callerId from Supabase:', e)
+            console.error('[Twilio Webhook] Error fetching callerId from Supabase:', e)
         }
     }
 
-    console.log(`[Twilio Webhook] Outgoing call to ${to} with callerId ${callerId}`)
+    // 3. Fallback to any number in user_phone_numbers if still empty
+    if (!callerId) {
+        try {
+            const supabase = createSupabaseAdmin()
+            const { data: fallbackData } = await supabase
+                .from('user_phone_numbers')
+                .select('phone_number')
+                .limit(1)
+                .single()
 
-    const cleanTo = to.replace(/[^0-9+]/g, '')
+            if (fallbackData?.phone_number) {
+                callerId = fallbackData.phone_number
+            }
+        } catch {}
+    }
+
+    // Format callerId to strict E.164 format (+1XXXXXXXXXX)
+    callerId = formatE164(callerId)
+
+    console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with callerId ${callerId}`)
+
+    // If callerId is STILL empty or invalid, notify user gracefully via audio instead of throwing Error 13214
+    if (!callerId) {
+        console.error('[Twilio Webhook] Error: Invalid/missing callerId. CallerId is empty.')
+        return twimlResponse(`
+            <Response>
+                <Say>Unable to place call. No verified Twilio caller ID was found. Please set your default phone number in Settings or check TWILIO_DEFAULT_NUMBER.</Say>
+            </Response>
+        `)
+    }
     
     return twimlResponse(`
         <Response>

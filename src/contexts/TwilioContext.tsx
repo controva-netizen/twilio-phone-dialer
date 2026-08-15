@@ -12,7 +12,7 @@ interface TwilioContextValue {
     deviceStatus: DeviceStatus;
     deviceError: string | null;
     incomingCall: Call | null;
-    makeCall: (phoneNumber: string) => Promise<Call | null>;
+    makeCall: (phoneNumber: string, callerId?: string) => Promise<Call | null>;
     acceptIncomingCall: () => void;
     rejectIncomingCall: () => void;
 

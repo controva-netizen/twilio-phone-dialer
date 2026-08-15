@@ -11,7 +11,7 @@ interface UseTwilioDeviceReturn {
     status: DeviceStatus;
     error: string | null;
     incomingCall: Call | null;
-    makeCall: (phoneNumber: string) => Promise<Call | null>;
+    makeCall: (phoneNumber: string, callerId?: string) => Promise<Call | null>;
     acceptIncomingCall: () => void;
     rejectIncomingCall: () => void;
 }
@@ -115,7 +115,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     }, []);
 
     // Make outgoing call
-    const makeCall = useCallback(async (phoneNumber: string): Promise<Call | null> => {
+    const makeCall = useCallback(async (phoneNumber: string, callerId?: string): Promise<Call | null> => {
         if (!deviceRef.current || status !== 'ready') {
             setError('Device not ready');
             return null;
@@ -124,7 +124,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         try {
             setStatus('busy');
             const cleanNumber = phoneNumber.trim().replace(/[\s()-]/g, '');
-            console.log('[Twilio Device] Connecting outbound call to:', cleanNumber);
+            console.log('[Twilio Device] Connecting outbound call to:', cleanNumber, 'callerId:', callerId);
             const call = await deviceRef.current.connect({
                 params: {
                     ToNumber: cleanNumber,
@@ -132,6 +132,8 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
                     phoneNumber: cleanNumber,
                     destination: cleanNumber,
                     called: cleanNumber,
+                    callerId: callerId ? callerId.trim().replace(/[\s()-]/g, '') : '',
+                    CallerId: callerId ? callerId.trim().replace(/[\s()-]/g, '') : '',
                 },
             });
 

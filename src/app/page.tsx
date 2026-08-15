@@ -102,7 +102,7 @@ export default function Home() {
 
         dialedNumberRef.current = numberToCall;
 
-        const call = await twilio.makeCall(numberToCall);
+        const call = await twilio.makeCall(numberToCall, selectedCallerId);
         if (call) {
             twilio.setActiveCall(call, 'outgoing', numberToCall);
             setPhoneNumber('');
