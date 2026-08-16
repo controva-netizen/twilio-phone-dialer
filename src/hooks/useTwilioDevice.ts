@@ -8,7 +8,7 @@ import type { DeviceStatus } from '@/types';
 
 export interface CallOptions {
     callerId?: string;
-    callMode?: 'direct' | 'script' | 'ai_agent';
+    callMode?: 'direct' | 'script' | 'ai_agent' | 'test';
     customScript?: string;
     customGreeting?: string;
 }

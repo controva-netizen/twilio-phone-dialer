@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/Layout';
 import { CallHistoryList, RichDialer } from '@/components/Calls';
 import { AutoDialer } from '@/components/AutoDialer';
 import { AccessibilityPanel } from '@/components/AccessibilityPanel';
+import { AISimulatorModal } from '@/components/AISimulatorModal';
 import { useTwilio } from '@/contexts/TwilioContext';
 import { useCallHistory, createCallHistoryEntry } from '@/hooks/useCallHistory';
 import styles from './page.module.css';
@@ -98,6 +99,7 @@ export default function Home() {
     // Call Strategy / Mode: direct | script | ai_agent
     const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
     const [selectedCampaign, setSelectedCampaign] = useState('Senior Sweepstakes Recovery (15 Rebuttals)');
+    const [showAISimulator, setShowAISimulator] = useState(false);
 
     // Make Call
     const handleCall = async (numberToCallParam?: string) => {
@@ -106,8 +108,10 @@ export default function Home() {
 
         dialedNumberRef.current = numberToCall;
 
+        const effectiveMode = numberToCall === '*99' ? 'test' : callMode;
+
         const call = await twilio.makeCall(numberToCall, selectedCallerId, {
-            callMode,
+            callMode: effectiveMode,
             customGreeting: callMode === 'ai_agent' ? undefined : undefined,
         });
         if (call) {
@@ -281,10 +285,28 @@ export default function Home() {
                             {/* Active AI Mode Banner */}
                             {callMode === 'ai_agent' && (
                                 <div className={styles.aiBadge}>
-                                    <div className={styles.aiPulseDot}></div>
-                                    <div className={styles.aiBadgeText}>
-                                        <span className={styles.aiBadgeTitle}>AI Agent Armed (Replicate / Cerebras)</span>
-                                        <span className={styles.aiBadgeSub}>Pre-loaded: Senior Sweepstakes Recovery (15 Rebuttals)</span>
+                                    <div className={styles.aiBadgeHeader}>
+                                        <div className={styles.aiPulseDot}></div>
+                                        <div className={styles.aiBadgeText}>
+                                            <span className={styles.aiBadgeTitle}>AI Agent Armed (Replicate / Cerebras)</span>
+                                            <span className={styles.aiBadgeSub}>Senior Sweepstakes Recovery (15 Rebuttals)</span>
+                                        </div>
+                                    </div>
+                                    <div className={styles.aiActions}>
+                                        <button
+                                            className={styles.aiTestCallBtn}
+                                            onClick={() => handleCall('*99')}
+                                            title="Speak directly to AI via computer microphone (*99)"
+                                        >
+                                            🎧 Test Voice in Mic (*99)
+                                        </button>
+                                        <button
+                                            className={styles.aiSimulateBtn}
+                                            onClick={() => setShowAISimulator(true)}
+                                            title="Open Interactive AI Chat Simulator"
+                                        >
+                                            🧪 Simulator Studio
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -382,6 +404,12 @@ export default function Home() {
                     </div>
                 </div>
             )}
+            {/* AI Simulator Modal */}
+            <AISimulatorModal
+                isOpen={showAISimulator}
+                onClose={() => setShowAISimulator(false)}
+                onStartBrowserAudioCall={() => handleCall('*99')}
+            />
         </AppLayout>
     );
 }

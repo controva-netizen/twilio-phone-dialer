@@ -155,6 +155,25 @@ export async function GET(request: NextRequest) {
 }
 
 async function handleOutgoingCall(to: string, from: string, params: Record<string, string>, request: NextRequest): Promise<NextResponse> {
+    const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
+    const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
+    const callMode = (params['callMode'] || params['mode'] || 'direct').toLowerCase()
+
+    // 0. Special: In-Browser AI Test Call (*99 or 'test')
+    if (to === '*99' || to === '99' || to.toLowerCase() === 'test' || callMode === 'test') {
+        console.log(`[Twilio Webhook] In-Browser AI Voice Test Call connected for user ${userId}`)
+        const greeting = `Hello! This is your Marvik AI Voice Agent test line. I am running live with your Senior Sweepstakes Recovery Script and 15 objection rebuttals. Go ahead and test an objection or question with me right now!`
+        const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=%2B13072076444&amp;turnCount=1`
+
+        return twimlResponse(`
+            <Response>
+                <Gather input="speech dtmf" timeout="6" speechTimeout="auto" action="${turnActionUrl}">
+                    <Say voice="Polly.Danielle-Neural">${greeting}</Say>
+                </Gather>
+            </Response>
+        `)
+    }
+
     if (!to || to.startsWith('AP') || to.startsWith('client:')) {
         console.error('[Twilio Webhook] No valid destination number in params:', params)
         return twimlResponse(`
@@ -174,7 +193,6 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     }
 
     // 2. Look up the caller's default number from Supabase
-    const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
     if (!callerId && userId) {
         try {
             const supabase = createSupabaseAdmin()
@@ -235,10 +253,6 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
 
     // Strictly format callerId to E.164 format (+1XXXXXXXXXX)
     callerId = formatE164(callerId) || '+13072076444'
-
-    // Check call mode: 'direct' | 'script' | 'ai_agent'
-    const callMode = (params['callMode'] || params['mode'] || 'direct').toLowerCase()
-    const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
 
     console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with mode=${callMode}, verified callerId=${callerId}`)
     
