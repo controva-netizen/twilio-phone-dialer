@@ -116,18 +116,24 @@ export default function Home() {
                 setAiDialing(true);
                 setAiCallNotice(`🤖 AI Voice Agent is dialing ${numberToCall}...`);
 
+                // Twilio identity is the user UUID used to register the softphone
+                const agentUserId = twilio.twilioIdentity
+                    || (typeof window !== 'undefined' ? localStorage.getItem('twilio_identity') : null)
+                    || 'user';
+
                 const res = await fetch('/api/twilio/ai-call/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         to: numberToCall,
                         callerId: selectedCallerId,
+                        agentUserId,
                     }),
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    setAiCallNotice(`✅ AI Voice Agent has placed call to ${numberToCall}! When the customer picks up, the AI will deliver the pitch and transfer the warm call straight into your softphone!`);
+                    setAiCallNotice(`✅ AI Agent dialing ${numberToCall}! The AI will pitch the customer and ring your softphone when they're ready to talk!`);
                     setPhoneNumber('');
                     addEntry(createCallHistoryEntry('outgoing', numberToCall, 0, 'completed'));
                 } else {

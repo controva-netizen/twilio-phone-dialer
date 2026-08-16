@@ -160,10 +160,15 @@ export function AutoDialer() {
         // Mode 1: AI Voice Agent Outbound Campaign (Twilio Cloud -> Customer -> AI -> Softphone Transfer)
         if (dialMode === 'ai_agent') {
             try {
+                // Get the Twilio client identity (Supabase UUID) — stored in localStorage when device initialises
+                const agentUserId = twilioRef.current?.twilioIdentity
+                    || (typeof window !== 'undefined' ? localStorage.getItem('twilio_identity') : null)
+                    || 'user';
+
                 const res = await fetch('/api/twilio/ai-call/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to: entry.number }),
+                    body: JSON.stringify({ to: entry.number, agentUserId }),
                 });
                 const data = await res.json();
                 if (data.success) {

@@ -18,6 +18,7 @@ interface UseTwilioDeviceReturn {
     status: DeviceStatus;
     error: string | null;
     incomingCall: Call | null;
+    twilioIdentity: string | null;
     makeCall: (phoneNumber: string, callerId?: string, options?: CallOptions) => Promise<Call | null>;
     acceptIncomingCall: () => void;
     rejectIncomingCall: () => void;
@@ -28,6 +29,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     const [status, setStatus] = useState<DeviceStatus>('offline');
     const [error, setError] = useState<string | null>(null);
     const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+    const [twilioIdentity, setTwilioIdentity] = useState<string | null>(null);
 
     const deviceRef = useRef<Device | null>(null);
     const tokenRefreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,7 +44,12 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
             setStatus('connecting');
             setError(null);
 
-            const { token } = await fetchToken();
+            const { token, identity } = await fetchToken();
+            if (identity) {
+                setTwilioIdentity(identity);
+                // Persist so AutoDialer and other components can read it
+                try { localStorage.setItem('twilio_identity', identity); } catch {}
+            }
 
             // Check again after async operation
             if (isDestroyed.current) return;
@@ -211,6 +218,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         status,
         error,
         incomingCall,
+        twilioIdentity,
         makeCall,
         acceptIncomingCall,
         rejectIncomingCall,

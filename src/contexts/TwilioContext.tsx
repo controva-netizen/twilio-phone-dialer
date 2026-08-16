@@ -14,6 +14,7 @@ interface TwilioContextValue {
     deviceStatus: DeviceStatus;
     deviceError: string | null;
     incomingCall: Call | null;
+    twilioIdentity: string | null;
     makeCall: (phoneNumber: string, callerId?: string, options?: CallOptions) => Promise<Call | null>;
     acceptIncomingCall: () => void;
     rejectIncomingCall: () => void;
@@ -47,6 +48,7 @@ export function TwilioProvider({ children }: { children: ReactNode }) {
         status: deviceStatus,
         error: deviceError,
         incomingCall,
+        twilioIdentity,
         makeCall,
         acceptIncomingCall: rawAccept,
         rejectIncomingCall: rawReject,
@@ -85,6 +87,7 @@ export function TwilioProvider({ children }: { children: ReactNode }) {
         deviceStatus,
         deviceError,
         incomingCall,
+        twilioIdentity,
         makeCall,
         acceptIncomingCall,
         rejectIncomingCall,

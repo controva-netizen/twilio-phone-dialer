@@ -25,13 +25,19 @@ export async function POST(request: NextRequest) {
         const cleanTo = formatE164(to);
         const cleanCallerId = formatE164(requestedCallerId);
 
-        // Get current user ID
-        let userId = 'user';
-        try {
-            const supabase = await createClient();
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) userId = user.id;
-        } catch {}
+        // agentUserId: prefer what the frontend sends (it's the Twilio client identity = Supabase user.id)
+        // Only fall back to server-side Supabase lookup if not provided
+        let userId = body.agentUserId || '';
+        if (!userId) {
+            try {
+                const supabase = await createClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) userId = user.id;
+            } catch {}
+        }
+        if (!userId) userId = 'user';
+
+        console.log(`[AI Call Start] agentUserId resolved to: ${userId}`);
 
         const accountSid = process.env.TWILIO_ACCOUNT_SID;
         const apiKey = process.env.TWILIO_API_KEY;
