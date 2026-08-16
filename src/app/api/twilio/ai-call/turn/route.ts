@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, ChatMessage } from '@/lib/ai/llm';
 import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT } from '@/lib/ai/prompts';
 
+function escapeXml(unsafe: string): string {
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 function twimlResponse(twiml: string): NextResponse {
     console.log(`[Twilio AI Turn Response]\n${twiml}`);
     return new NextResponse(twiml, {
@@ -79,7 +88,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
                 // Max silence turns reached, transfer to human agent
                 return twimlResponse(`
                     <Response>
-                        <Say voice="Polly.Danielle-Neural">Let me connect you directly with our senior specialist right now.</Say>
+                        <Say voice="Polly.Joanna" language="en-US">Let me connect you directly with our senior specialist right now.</Say>
                         <Dial answerOnBridge="true" callerId="${callerId}">
                             <Client>${agentUserId}</Client>
                         </Dial>
@@ -90,7 +99,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
             return twimlResponse(`
                 <Response>
                     <Gather input="speech dtmf" timeout="4" action="${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=${turnCount + 1}&amp;history=${encodeURIComponent(JSON.stringify(history))}">
-                        <Say voice="Polly.Danielle-Neural">I am still on the line. Are you ready to proceed with your award verification, or would you like me to connect you with an officer?</Say>
+                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you ready to proceed with your award verification, or would you like me to connect you with an officer?</Say>
                     </Gather>
                 </Response>
             `);
@@ -101,7 +110,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
 
         // 3. Look up user's custom AI settings and API keys from Supabase
         let systemPrompt = SENIOR_SWEEPSTAKES_SYSTEM_PROMPT;
-        let aiVoice = 'Polly.Danielle-Neural';
+        let aiVoice = 'Polly.Joanna';
         let userKeys: { cerebrasKey?: string; replicateToken?: string } = {};
 
         if (agentUserId && agentUserId !== 'user') {
@@ -139,7 +148,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         if (aiResponse.shouldTransfer || turnCount >= 6) {
             return twimlResponse(`
                 <Response>
-                    <Say voice="Polly.Danielle-Neural">${aiResponse.text}</Say>
+                    <Say voice="${aiVoice}" language="en-US">${escapeXml(aiResponse.text)}</Say>
                     <Dial answerOnBridge="true" callerId="${callerId}">
                         <Client>${agentUserId}</Client>
                     </Dial>
@@ -154,7 +163,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         return twimlResponse(`
             <Response>
                 <Gather input="speech dtmf" timeout="4" speechTimeout="auto" action="${nextActionUrl}">
-                    <Say voice="Polly.Danielle-Neural">${aiResponse.text}</Say>
+                    <Say voice="${aiVoice}" language="en-US">${escapeXml(aiResponse.text)}</Say>
                 </Gather>
             </Response>
         `);
@@ -163,7 +172,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         const callerId = process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
         return twimlResponse(`
             <Response>
-                <Say voice="Polly.Danielle-Neural">Please hold while I connect you with our senior specialist.</Say>
+                <Say voice="Polly.Joanna" language="en-US">Please hold while I connect you with our senior specialist.</Say>
                 <Dial answerOnBridge="true" callerId="${callerId}">
                     <Client>user</Client>
                 </Dial>

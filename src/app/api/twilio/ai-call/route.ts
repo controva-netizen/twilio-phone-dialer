@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateInitialGreeting } from '@/lib/ai/prompts';
 
+function escapeXml(unsafe: string): string {
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 function twimlResponse(twiml: string): NextResponse {
     console.log(`[Twilio AI Entry Response]\n${twiml}`);
     return new NextResponse(twiml, {
@@ -70,7 +79,7 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
         return twimlResponse(`
             <Response>
                 <Gather input="speech dtmf" timeout="5" speechTimeout="auto" action="${turnActionUrl}">
-                    <Say voice="Polly.Danielle-Neural">${greeting}</Say>
+                    <Say voice="Polly.Joanna" language="en-US">${escapeXml(greeting)}</Say>
                 </Gather>
             </Response>
         `);
@@ -78,7 +87,7 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
         console.error('[AI Entry] Error initializing AI call:', error);
         return twimlResponse(`
             <Response>
-                <Say voice="Polly.Danielle-Neural">Connecting your call.</Say>
+                <Say voice="Polly.Joanna" language="en-US">Connecting your call.</Say>
                 <Dial answerOnBridge="true">
                     <Client>user</Client>
                 </Dial>

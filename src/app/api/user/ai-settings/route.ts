@@ -19,7 +19,7 @@ const DEFAULT_AI_SETTINGS: UserAISettings = {
     cerebras_api_key: '',
     deepgram_api_key: '',
     cartesia_api_key: '',
-    ai_voice: 'Polly.Danielle-Neural',
+    ai_voice: 'Polly.Joanna',
     system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
     transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
     max_turns: 6,

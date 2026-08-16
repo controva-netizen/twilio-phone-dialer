@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styles from './AISimulatorModal.module.css';
 
 interface Message {
@@ -41,12 +41,82 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
     ]);
     const [inputText, setInputText] = useState('');
     const [loading, setLoading] = useState(false);
+    const [autoSpeak, setAutoSpeak] = useState(true);
+    const [currentlySpeakingIdx, setCurrentlySpeakingIdx] = useState<number | null>(null);
+    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    // Initialize speech synthesis voices
+    useEffect(() => {
+        if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+        const updateVoices = () => {
+            const available = window.speechSynthesis.getVoices();
+            if (available.length > 0) {
+                setVoices(available);
+            }
+        };
+
+        updateVoices();
+        window.speechSynthesis.onvoiceschanged = updateVoices;
+
+        return () => {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages, loading]);
 
     if (!isOpen) return null;
+
+    const playVoice = (text: string, msgIdx?: number) => {
+        if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+        window.speechSynthesis.cancel();
+
+        const cleanText = text
+            .replace(/\[TRANSFER\]/gi, '')
+            .replace(/[*_#]/g, '')
+            .trim();
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+
+        // Try to pick the best natural English voice
+        if (voices.length > 0) {
+            const preferredVoice =
+                voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Neural') || v.name.includes('Google') || v.name.includes('Jenny') || v.name.includes('Zira') || v.name.includes('Samantha'))) ||
+                voices.find(v => v.lang.startsWith('en')) ||
+                voices[0];
+            if (preferredVoice) utterance.voice = preferredVoice;
+        }
+
+        if (msgIdx !== undefined) setCurrentlySpeakingIdx(msgIdx);
+
+        utterance.onend = () => setCurrentlySpeakingIdx(null);
+        utterance.onerror = () => setCurrentlySpeakingIdx(null);
+
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const stopSpeaking = () => {
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            setCurrentlySpeakingIdx(null);
+        }
+    };
 
     const handleSend = async (textToSend?: string) => {
         const query = (textToSend || inputText).trim();
         if (!query || loading) return;
+
+        stopSpeaking();
 
         const userMsg: Message = { sender: 'user', text: query };
         const newHistory = [...messages, userMsg];
@@ -76,13 +146,11 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                 latencyMs: data.latencyMs,
             };
 
-            setMessages([...newHistory, aiMsg]);
+            const updatedHistory = [...newHistory, aiMsg];
+            setMessages(updatedHistory);
 
-            // Play browser audio if available
-            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(aiMsg.text);
-                utterance.rate = 1.0;
-                window.speechSynthesis.speak(utterance);
+            if (autoSpeak) {
+                playVoice(aiMsg.text, updatedHistory.length - 1);
             }
         } catch (err) {
             console.error('Simulation error:', err);
@@ -92,27 +160,38 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
     };
 
     const handleReset = () => {
+        stopSpeaking();
         setMessages([
             {
                 sender: 'ai',
                 text: "Hello! My name is Officer Alex Miller with the Federal Consumer Award Oversight Bureau. I'm calling regarding a time-sensitive unclaimed consumer award file for $950,000. Are you available for just a moment so I can share the details with you?",
             },
         ]);
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-        }
     };
 
     return (
-        <div className={styles.backdrop} onClick={onClose}>
+        <div className={styles.backdrop} onClick={() => { stopSpeaking(); onClose(); }}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div className={styles.header}>
                     <div className={styles.titleInfo}>
-                        <h2 className={styles.title}>🧪 Marvik AI Voice Simulator Studio</h2>
-                        <span className={styles.subtitle}>Test objections, responses, and live transfer logic without making a real phone call</span>
+                        <div className={styles.titleRow}>
+                            <h2 className={styles.title}>🧪 Marvik AI Voice Simulator Studio</h2>
+                            <span className={styles.liveBadge}>● LIVE SPEAKER READY</span>
+                        </div>
+                        <span className={styles.subtitle}>Test objections, AI voice audio, and live transfer triggers instantly</span>
                     </div>
-                    <button className={styles.closeBtn} onClick={onClose}>×</button>
+                    <div className={styles.headerActions}>
+                        <label className={styles.autoSpeakToggle} title="Automatically play AI voice out loud">
+                            <input
+                                type="checkbox"
+                                checked={autoSpeak}
+                                onChange={(e) => setAutoSpeak(e.target.checked)}
+                            />
+                            <span>🔊 Auto-Speak</span>
+                        </label>
+                        <button className={styles.closeBtn} onClick={() => { stopSpeaking(); onClose(); }}>×</button>
+                    </div>
                 </div>
 
                 {/* Body */}
@@ -120,12 +199,13 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                     {/* Live In-Browser Call Action Banner */}
                     <div className={styles.audioTestBanner}>
                         <div className={styles.audioBannerInfo}>
-                            <strong>🎧 Want to talk via your Computer Microphone?</strong>
-                            <span>Start a 100% free in-browser WebRTC call directly to the AI agent.</span>
+                            <strong>🎧 Speak via Your Computer Microphone (*99)</strong>
+                            <span>Start a 100% free live 2-way WebRTC voice conversation with the AI.</span>
                         </div>
                         <button
                             className={styles.startAudioCallBtn}
                             onClick={() => {
+                                stopSpeaking();
                                 onClose();
                                 onStartBrowserAudioCall();
                             }}
@@ -136,7 +216,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
 
                     {/* Quick Objection Chips */}
                     <div className={styles.chipsSection}>
-                        <span className={styles.chipsLabel}>Test Quick Objection:</span>
+                        <span className={styles.chipsLabel}>Quick Objection Test Chips:</span>
                         <div className={styles.chipsGrid}>
                             {SAMPLE_OBJECTIONS.map((obj, i) => (
                                 <button
@@ -158,8 +238,19 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                                 key={idx}
                                 className={`${styles.messageRow} ${m.sender === 'user' ? styles.userRow : styles.aiRow}`}
                             >
-                                <div className={styles.avatar}>
-                                    {m.sender === 'user' ? '👤 Caller' : '🤖 AI Agent'}
+                                <div className={styles.avatarRow}>
+                                    <span className={styles.avatar}>
+                                        {m.sender === 'user' ? '👤 Caller' : '🤖 AI Voice Agent'}
+                                    </span>
+                                    {m.sender === 'ai' && (
+                                        <button
+                                            className={`${styles.playAudioBtn} ${currentlySpeakingIdx === idx ? styles.speakingActive : ''}`}
+                                            onClick={() => currentlySpeakingIdx === idx ? stopSpeaking() : playVoice(m.text, idx)}
+                                            title="Listen to AI voice"
+                                        >
+                                            {currentlySpeakingIdx === idx ? '⏹️ Stop' : '🔊 Listen Voice'}
+                                        </button>
+                                    )}
                                 </div>
                                 <div className={`${styles.bubble} ${m.sender === 'user' ? styles.userBubble : styles.aiBubble}`}>
                                     <p className={styles.messageText}>{m.text}</p>
@@ -175,6 +266,12 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                                                     ⚡ {m.provider.toUpperCase()} ({m.latencyMs}ms)
                                                 </span>
                                             )}
+                                            {currentlySpeakingIdx === idx && (
+                                                <span className={styles.speakingIndicator}>
+                                                    <span className={styles.soundWave}></span>
+                                                    <span>Speaking aloud...</span>
+                                                </span>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -182,12 +279,13 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                         ))}
                         {loading && (
                             <div className={`${styles.messageRow} ${styles.aiRow}`}>
-                                <div className={styles.avatar}>🤖 AI Agent</div>
+                                <div className={styles.avatar}>🤖 AI Voice Agent</div>
                                 <div className={`${styles.bubble} ${styles.aiBubble}`}>
-                                    <span className={styles.typingDot}>AI is thinking & reasoning...</span>
+                                    <span className={styles.typingDot}>AI is reasoning & formulating speech...</span>
                                 </div>
                             </div>
                         )}
+                        <div ref={chatEndRef} />
                     </div>
                 </div>
 
@@ -199,7 +297,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                     <input
                         type="text"
                         className={styles.input}
-                        placeholder="Type what the customer says (e.g. 'Why should I pay first?')..."
+                        placeholder="Type what the customer says (e.g. 'Is this a scam? Why do I pay?')..."
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -210,7 +308,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                         onClick={() => handleSend()}
                         disabled={loading || !inputText.trim()}
                     >
-                        {loading ? 'Sending...' : 'Test Response'}
+                        {loading ? 'Sending...' : 'Test Speech & Response'}
                     </button>
                 </div>
             </div>

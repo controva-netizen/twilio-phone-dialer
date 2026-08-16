@@ -168,7 +168,7 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
         return twimlResponse(`
             <Response>
                 <Gather input="speech dtmf" timeout="6" speechTimeout="auto" action="${turnActionUrl}">
-                    <Say voice="Polly.Danielle-Neural">${greeting}</Say>
+                    <Say voice="Polly.Joanna" language="en-US">${greeting}</Say>
                 </Gather>
             </Response>
         `)

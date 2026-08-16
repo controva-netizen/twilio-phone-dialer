@@ -251,11 +251,11 @@ export default function SettingsPage() {
                                     value={aiSettings.ai_voice}
                                     onChange={(e) => setAiSettings({ ...aiSettings, ai_voice: e.target.value })}
                                 >
-                                    <option value="Polly.Danielle-Neural">Danielle (US Female - Authoritative & Warm)</option>
-                                    <option value="Polly.Matthew-Neural">Matthew (US Male - Professional Executive)</option>
-                                    <option value="Polly.Joanna-Neural">Joanna (US Female - Clear & Conversational)</option>
-                                    <option value="Polly.Stephen-Neural">Stephen (US Male - Friendly Advisor)</option>
-                                    <option value="Polly.Ruth-Neural">Ruth (US Female - Senior Recovery Specialist)</option>
+                                    <option value="Polly.Joanna">Joanna (US Female - Natural & Conversational)</option>
+                                    <option value="Polly.Salli">Salli (US Female - Warm & Authoritative)</option>
+                                    <option value="Polly.Matthew">Matthew (US Male - Professional Executive)</option>
+                                    <option value="Polly.Amy">Amy (UK Female - Senior Specialist)</option>
+                                    <option value="alice">Alice (Standard Voice)</option>
                                 </select>
                             </div>
 

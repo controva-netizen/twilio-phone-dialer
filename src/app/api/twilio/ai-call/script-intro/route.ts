@@ -18,7 +18,7 @@ async function handleScript(request: NextRequest): Promise<NextResponse> {
     const script = `Hello! Thank you for taking our call regarding your inquiry. Please hold for one second while I connect you directly with our senior specialist.`;
     return twimlResponse(`
         <Response>
-            <Say voice="Polly.Danielle-Neural">${script}</Say>
+            <Say voice="Polly.Joanna" language="en-US">${script}</Say>
         </Response>
     `);
 }
