@@ -14,7 +14,8 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "twilio": "^5.12.1"
+    "twilio": "^5.12.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
