@@ -52,18 +52,14 @@ async function extractParams(request: NextRequest): Promise<Record<string, strin
     return params;
 }
 
+import { getPublicAppUrl } from '@/lib/url';
+
 export async function POST(request: NextRequest) {
     return handleTurn(request);
 }
 
 export async function GET(request: NextRequest) {
     return handleTurn(request);
-}
-
-function getAppUrl(request: NextRequest): string {
-    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
-    return `${proto}://${host}`;
 }
 
 async function handleTurn(request: NextRequest): Promise<NextResponse> {
@@ -86,7 +82,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         } catch {}
 
         // Base URL for callback
-        const appUrl = getAppUrl(request);
+        const appUrl = await getPublicAppUrl(request);
 
         // 1. If customer was silent or no speech was recognized
         if (!speechResult) {

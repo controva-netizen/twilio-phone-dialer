@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
 import { createClient } from '@/lib/supabase/server';
+import { getPublicAppUrl } from '@/lib/url';
 
 function formatE164(phone: string): string {
     const clean = phone.replace(/[^0-9+]/g, '');
@@ -9,12 +10,6 @@ function formatE164(phone: string): string {
     if (clean.length === 10) return `+1${clean}`;
     if (clean.length === 11 && clean.startsWith('1')) return `+${clean}`;
     return `+${clean}`;
-}
-
-function getAppUrl(request: NextRequest): string {
-    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
-    return `${proto}://${host}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -47,7 +42,7 @@ export async function POST(request: NextRequest) {
         }
 
         const client = twilio(apiKey, apiSecret, { accountSid });
-        const appUrl = getAppUrl(request);
+        const appUrl = await getPublicAppUrl(request);
 
         const aiWebhookUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(cleanCallerId)}`;
 

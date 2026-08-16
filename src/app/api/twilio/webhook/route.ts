@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { getPublicAppUrl } from '@/lib/url'
 
 // This route handles:
 // 1. Incoming calls - routes to the correct user based on the dialed number
@@ -154,15 +155,9 @@ export async function GET(request: NextRequest) {
     return handleRequest(request)
 }
 
-function getAppUrl(request: NextRequest): string {
-    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
-    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
-    return `${proto}://${host}`;
-}
-
 async function handleOutgoingCall(to: string, from: string, params: Record<string, string>, request: NextRequest): Promise<NextResponse> {
     const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
-    const appUrl = getAppUrl(request)
+    const appUrl = await getPublicAppUrl(request)
     const callMode = (params['callMode'] || params['mode'] || 'direct').toLowerCase()
 
     // 0. Special: In-Browser AI Test Call (*99 or 'test')
@@ -326,7 +321,7 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
     const voicemailEnabled = numberRecord.voicemail_enabled
 
     // Build the app base URL from the incoming request
-    const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
+    const appUrl = await getPublicAppUrl(request)
 
     // Build the <Dial> verb attributes
     const recordAttr = recordEnabled ? ' record="record-from-answer-dual"' : ''
