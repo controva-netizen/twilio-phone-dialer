@@ -59,6 +59,12 @@ export async function GET(request: NextRequest) {
     return handleEntry(request);
 }
 
+function getAppUrl(request: NextRequest): string {
+    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    return `${proto}://${host}`;
+}
+
 async function handleEntry(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request);
@@ -69,7 +75,7 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
         const callerId = params['callerId'] || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
 
         // Base URL for callback
-        const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`;
+        const appUrl = getAppUrl(request);
 
         // Initial Greeting from Senior Sweepstakes Recovery Script
         const greeting = generateInitialGreeting();

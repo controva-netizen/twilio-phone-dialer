@@ -100,6 +100,8 @@ export default function Home() {
     const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
     const [selectedCampaign, setSelectedCampaign] = useState('Senior Sweepstakes Recovery (15 Rebuttals)');
     const [showAISimulator, setShowAISimulator] = useState(false);
+    const [aiCallNotice, setAiCallNotice] = useState<string | null>(null);
+    const [aiDialing, setAiDialing] = useState(false);
 
     // Make Call
     const handleCall = async (numberToCallParam?: string) => {
@@ -108,11 +110,42 @@ export default function Home() {
 
         dialedNumberRef.current = numberToCall;
 
-        const effectiveMode = numberToCall === '*99' ? 'test' : callMode;
+        // If in AI Agent mode and calling a customer's phone number:
+        if (callMode === 'ai_agent' && numberToCall !== '*99' && numberToCall !== '99') {
+            try {
+                setAiDialing(true);
+                setAiCallNotice(`🤖 AI Voice Agent is dialing ${numberToCall}...`);
+
+                const res = await fetch('/api/twilio/ai-call/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: numberToCall,
+                        callerId: selectedCallerId,
+                    }),
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    setAiCallNotice(`✅ AI Voice Agent has placed call to ${numberToCall}! When the customer picks up, the AI will deliver the pitch and transfer the warm call straight into your softphone!`);
+                    setPhoneNumber('');
+                    addEntry(createCallHistoryEntry('outgoing', numberToCall, 0, 'completed'));
+                } else {
+                    setAiCallNotice(`❌ Error: ${data.error || 'Failed to start AI call'}`);
+                }
+            } catch (err: any) {
+                setAiCallNotice(`❌ Error starting AI call: ${err.message}`);
+            } finally {
+                setAiDialing(false);
+            }
+            return;
+        }
+
+        // Direct call, Script call, or *99 Test Call via Softphone
+        const effectiveMode = (numberToCall === '*99' || numberToCall === '99') ? 'test' : callMode;
 
         const call = await twilio.makeCall(numberToCall, selectedCallerId, {
             callMode: effectiveMode,
-            customGreeting: callMode === 'ai_agent' ? undefined : undefined,
         });
         if (call) {
             twilio.setActiveCall(call, 'outgoing', numberToCall);
@@ -314,6 +347,14 @@ export default function Home() {
                             {callMode === 'script' && (
                                 <div className={styles.scriptBadge}>
                                     <span>🎙️ Intro announcement plays on answer, then bridges to you.</span>
+                                </div>
+                            )}
+
+                            {/* Live AI Call Notification Card */}
+                            {aiCallNotice && (
+                                <div className={styles.aiNoticeCard}>
+                                    <span>{aiCallNotice}</span>
+                                    <button onClick={() => setAiCallNotice(null)} className={styles.aiNoticeClose}>×</button>
                                 </div>
                             )}
 

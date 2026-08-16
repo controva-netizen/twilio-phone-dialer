@@ -154,9 +154,15 @@ export async function GET(request: NextRequest) {
     return handleRequest(request)
 }
 
+function getAppUrl(request: NextRequest): string {
+    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    return `${proto}://${host}`;
+}
+
 async function handleOutgoingCall(to: string, from: string, params: Record<string, string>, request: NextRequest): Promise<NextResponse> {
     const userId = from.startsWith('client:') ? from.replace('client:', '') : ''
-    const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
+    const appUrl = getAppUrl(request)
     const callMode = (params['callMode'] || params['mode'] || 'direct').toLowerCase()
 
     // 0. Special: In-Browser AI Test Call (*99 or 'test')

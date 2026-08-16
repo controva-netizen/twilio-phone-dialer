@@ -60,6 +60,12 @@ export async function GET(request: NextRequest) {
     return handleTurn(request);
 }
 
+function getAppUrl(request: NextRequest): string {
+    const proto = request.headers.get('x-forwarded-proto') || (request.headers.get('host')?.includes('localhost') ? 'http' : 'https');
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000';
+    return `${proto}://${host}`;
+}
+
 async function handleTurn(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request);
@@ -80,7 +86,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         } catch {}
 
         // Base URL for callback
-        const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`;
+        const appUrl = getAppUrl(request);
 
         // 1. If customer was silent or no speech was recognized
         if (!speechResult) {
