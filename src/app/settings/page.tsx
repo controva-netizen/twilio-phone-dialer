@@ -93,12 +93,24 @@ export default function SettingsPage() {
                 console.error('Failed to fetch voice settings:', err);
             }
 
-            // Fetch AI settings
+            // 1. Check local storage for immediate recovery
+            try {
+                const localData = localStorage.getItem('marvik_ai_settings');
+                if (localData) {
+                    const parsed = JSON.parse(localData);
+                    setAiSettings(prev => ({ ...prev, ...parsed }));
+                }
+            } catch {}
+
+            // 2. Fetch AI settings from server
             try {
                 const res = await fetch('/api/user/ai-settings');
                 const data = await res.json();
                 if (data && !data.error) {
                     setAiSettings(prev => ({ ...prev, ...data }));
+                    try {
+                        localStorage.setItem('marvik_ai_settings', JSON.stringify(data));
+                    } catch {}
                 }
             } catch (err) {
                 console.error('Failed to fetch AI settings:', err);
@@ -153,13 +165,19 @@ export default function SettingsPage() {
         setSavingAI(true);
         setAiSavedSuccess(false);
         try {
+            // Save in localStorage immediately
+            try {
+                localStorage.setItem('marvik_ai_settings', JSON.stringify(aiSettings));
+            } catch {}
+
+            // Save in Supabase Auth user_metadata
             await fetch('/api/user/ai-settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(aiSettings),
             });
             setAiSavedSuccess(true);
-            setTimeout(() => setAiSavedSuccess(false), 3000);
+            setTimeout(() => setAiSavedSuccess(false), 4000);
         } catch (err) {
             console.error('Failed to save AI settings:', err);
         } finally {

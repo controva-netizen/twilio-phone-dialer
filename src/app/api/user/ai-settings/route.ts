@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT, DEFAULT_SWEEPSTAKES_CONFIG } from '@/lib/ai/prompts';
 
 interface UserAISettings {
@@ -29,23 +30,18 @@ export async function GET() {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
 
-        // Return default settings if unauthenticated or not yet configured
         if (!user) {
             return NextResponse.json(DEFAULT_AI_SETTINGS);
         }
 
-        // Try querying custom ai_settings or user metadata
-        const { data: meta } = await supabase
-            .from('user_ai_settings')
-            .select('*')
-            .eq('user_id', user.id)
-            .limit(1)
-            .single();
+        const admin = createSupabaseAdmin();
+        const { data: adminUser } = await admin.auth.admin.getUserById(user.id);
+        const savedSettings = adminUser?.user?.user_metadata?.ai_settings || user.user_metadata?.ai_settings;
 
-        if (meta) {
+        if (savedSettings) {
             return NextResponse.json({
                 ...DEFAULT_AI_SETTINGS,
-                ...meta,
+                ...savedSettings,
             });
         }
 
@@ -66,17 +62,19 @@ export async function PUT(request: Request) {
         }
 
         const body = await request.json();
+        const admin = createSupabaseAdmin();
 
-        // Try upserting to user_ai_settings table
-        try {
-            await supabase
-                .from('user_ai_settings')
-                .upsert({
-                    user_id: user.id,
-                    ...body,
-                    updated_at: new Date().toISOString(),
-                });
-        } catch {}
+        // 1. Update in Supabase Auth user_metadata (permanent across devices/sessions)
+        const { data: updated, error: updateError } = await admin.auth.admin.updateUserById(user.id, {
+            user_metadata: {
+                ...(user.user_metadata || {}),
+                ai_settings: body,
+            }
+        });
+
+        if (updateError) {
+            console.error('[AI Settings] Admin update error:', updateError);
+        }
 
         return NextResponse.json({ success: true, settings: body });
     } catch (error) {

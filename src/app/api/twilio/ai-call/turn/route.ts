@@ -99,15 +99,37 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         // 2. Add customer message to history
         history.push({ role: 'user', content: speechResult });
 
-        // 3. Prepare full messages array for LLM
-        const systemPrompt = SENIOR_SWEEPSTAKES_SYSTEM_PROMPT;
+        // 3. Look up user's custom AI settings and API keys from Supabase
+        let systemPrompt = SENIOR_SWEEPSTAKES_SYSTEM_PROMPT;
+        let aiVoice = 'Polly.Danielle-Neural';
+        let userKeys: { cerebrasKey?: string; replicateToken?: string } = {};
+
+        if (agentUserId && agentUserId !== 'user') {
+            try {
+                const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+                const admin = createSupabaseAdmin();
+                const { data: adminUser } = await admin.auth.admin.getUserById(agentUserId);
+                const aiMeta = adminUser?.user?.user_metadata?.ai_settings;
+                if (aiMeta) {
+                    if (aiMeta.system_prompt) systemPrompt = aiMeta.system_prompt;
+                    if (aiMeta.ai_voice) aiVoice = aiMeta.ai_voice;
+                    userKeys = {
+                        cerebrasKey: aiMeta.cerebras_api_key,
+                        replicateToken: aiMeta.replicate_api_token,
+                    };
+                }
+            } catch (e) {
+                console.warn('[AI Turn] Could not fetch user metadata:', e);
+            }
+        }
+
         const messages: ChatMessage[] = [
             { role: 'system', content: systemPrompt },
             ...history.slice(-8) // keep last 8 turns for context window speed
         ];
 
         // 4. Generate AI reply via Multi-Provider Fallback Engine (Cerebras -> Replicate -> DeepSeek -> Rule)
-        const aiResponse = await generateAIResponse(messages);
+        const aiResponse = await generateAIResponse(messages, userKeys);
         console.log(`[AI Turn] AI generated response (via ${aiResponse.provider}):`, aiResponse.text, 'shouldTransfer:', aiResponse.shouldTransfer);
 
         // Add assistant response to history

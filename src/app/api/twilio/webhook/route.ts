@@ -242,28 +242,25 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
 
     console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with mode=${callMode}, verified callerId=${callerId}`)
     
-    // Mode 1: AI Agent (Auto-handles conversation and transfers when ready)
+    // Mode 1: AI Agent (Dials customer, AI engages upon answer, and bridges to agent on transfer)
     if (callMode === 'ai_agent') {
-        const greeting = params['customGreeting'] || `Hello! My name is Officer Alex with the Federal Consumer Award Oversight Bureau. I am calling regarding a time-sensitive unclaimed consumer award file for $950,000. Are you available for just a moment so I can share the details with you?`
-        const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=1`
-
+        const aiUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=${encodeURIComponent(callerId)}`
         return twimlResponse(`
             <Response>
-                <Gather input="speech dtmf" timeout="5" speechTimeout="auto" action="${turnActionUrl}">
-                    <Say voice="Polly.Danielle-Neural">${greeting}</Say>
-                </Gather>
+                <Dial answerOnBridge="true" callerId="${callerId}">
+                    <Number url="${aiUrl}">${cleanTo}</Number>
+                </Dial>
             </Response>
         `)
     }
 
     // Mode 2: Script Intro + Auto-Transfer
     if (callMode === 'script') {
-        const scriptText = params['customScript'] || `Hello! Thank you for taking our call regarding your inquiry. Please hold for one second while I connect you directly with our senior specialist.`
+        const scriptUrl = `${appUrl}/api/twilio/ai-call/script-intro`
         return twimlResponse(`
             <Response>
-                <Say voice="Polly.Danielle-Neural">${scriptText}</Say>
                 <Dial answerOnBridge="true" callerId="${callerId}">
-                    <Number>${cleanTo}</Number>
+                    <Number url="${scriptUrl}">${cleanTo}</Number>
                 </Dial>
             </Response>
         `)
