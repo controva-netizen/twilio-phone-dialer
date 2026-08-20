@@ -23,7 +23,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     const [incomingCall, setIncomingCall] = useState<Call | null>(null);
 
     const deviceRef = useRef<Device | null>(null);
-    const tokenRefreshTimeout = useRef<NodeJS.Timeout | null>(null);
+    const tokenRefreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isDestroyed = useRef(false);
 
     // Initialize device with token

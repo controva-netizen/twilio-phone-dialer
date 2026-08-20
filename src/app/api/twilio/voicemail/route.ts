@@ -31,12 +31,13 @@ export async function POST(request: NextRequest) {
         const callerNumber = url.searchParams.get('from') || ''
         const isSaveAction = url.searchParams.get('action') === 'save'
 
-        const formData = await request.formData()
-        const dialCallStatus = formData.get('DialCallStatus') as string | null
-        const recordingUrl = formData.get('RecordingUrl') as string | null
-        const recordingSid = formData.get('RecordingSid') as string | null
-        const recordingDuration = formData.get('RecordingDuration') as string | null
-        const callSid = formData.get('CallSid') as string | null
+        // Cast needed: @types/node's global FormData shadows the DOM's and lacks get()
+        const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
+        const dialCallStatus = formData['DialCallStatus'] || null
+        const recordingUrl = formData['RecordingUrl'] || null
+        const recordingSid = formData['RecordingSid'] || null
+        const recordingDuration = formData['RecordingDuration'] || null
+        const callSid = formData['CallSid'] || null
 
         console.log(`[Voicemail] userId: ${userId}, dialStatus: ${dialCallStatus}, action: ${isSaveAction ? 'save' : 'prompt'}`)
 

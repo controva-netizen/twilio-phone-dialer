@@ -26,7 +26,7 @@ export function useCallState(): UseCallStateReturn {
     const [direction, setDirection] = useState<CallDirection | null>(null);
     const [remoteNumber, setRemoteNumber] = useState<string | null>(null);
 
-    const durationInterval = useRef<NodeJS.Timeout | null>(null);
+    const durationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
     const callStartTime = useRef<Date | null>(null);
 
     // Start duration timer

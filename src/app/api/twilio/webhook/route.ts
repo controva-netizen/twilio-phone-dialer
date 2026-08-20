@@ -52,9 +52,10 @@ async function extractParams(request: NextRequest): Promise<Record<string, strin
         try {
             const contentType = request.headers.get('content-type') || ''
             if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
-                const formData = await request.formData()
+                // Cast needed: @types/node's global FormData shadows the DOM's
+                const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
                 formData.forEach((value, key) => {
-                    params[key] = value.toString()
+                    params[key] = value
                 })
             } else if (contentType.includes('application/json')) {
                 const json = await request.json()

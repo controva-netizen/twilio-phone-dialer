@@ -22,12 +22,13 @@ export async function POST(request: NextRequest) {
         const url = new URL(request.url)
         const userId = url.searchParams.get('user_id')
 
-        const formData = await request.formData()
-        const recordingUrl = formData.get('RecordingUrl') as string | null
-        const recordingSid = formData.get('RecordingSid') as string | null
-        const recordingDuration = formData.get('RecordingDuration') as string | null
-        const callSid = formData.get('CallSid') as string | null
-        const recordingStatus = formData.get('RecordingStatus') as string | null
+        // Cast needed: @types/node's global FormData shadows the DOM's and lacks get()
+        const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
+        const recordingUrl = formData['RecordingUrl'] || null
+        const recordingSid = formData['RecordingSid'] || null
+        const recordingDuration = formData['RecordingDuration'] || null
+        const callSid = formData['CallSid'] || null
+        const recordingStatus = formData['RecordingStatus'] || null
 
         console.log(`[Recording Status] userId: ${userId}, status: ${recordingStatus}, sid: ${recordingSid}, duration: ${recordingDuration}s`)
 

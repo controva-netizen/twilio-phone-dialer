@@ -29,8 +29,9 @@ export async function middleware(request: NextRequest) {
 
     // Allow Twilio webhook requests through without auth
     // These routes come from Twilio servers, not the browser
+    // Mobile API routes authenticate themselves via Bearer token
     const pathname = request.nextUrl.pathname
-    if (pathname.startsWith('/api/twilio/webhook') || pathname.startsWith('/api/twilio/voicemail') || pathname.startsWith('/api/twilio/recording-status')) {
+    if (pathname.startsWith('/api/twilio/webhook') || pathname.startsWith('/api/twilio/voicemail') || pathname.startsWith('/api/twilio/recording-status') || pathname.startsWith('/api/mobile')) {
         return NextResponse.next({ request })
     }
 
