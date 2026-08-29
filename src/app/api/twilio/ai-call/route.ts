@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateInitialGreeting } from '@/lib/ai/prompts';
+import { generateInitialGreeting, DEFAULT_AI_CONFIG } from '@/lib/ai/prompts';
 
 function escapeXml(unsafe: string): string {
     return unsafe
@@ -67,21 +67,51 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
         console.log('[AI Entry] Initiating AI call with params:', JSON.stringify(params));
 
         const from = params['From'] || '';
-        const agentUserId = from.startsWith('client:') ? from.replace('client:', '') : (params['userId'] || 'user');
+        // agentUserId is the Twilio Client identity (Supabase user UUID) that the transfer
+        // will dial into. It's passed as a query param on the webhook URL we built in
+        // /api/twilio/ai-call/start — must be read as 'agentUserId', not 'userId'.
+        const agentUserId = from.startsWith('client:')
+            ? from.replace('client:', '')
+            : (params['agentUserId'] || params['userId'] || 'user');
         const callerId = params['callerId'] || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
+        const leadName = params['leadName'] || '';
 
         // Base URL for callback
         const appUrl = await getPublicAppUrl(request);
 
-        // Initial Greeting from Senior Sweepstakes Recovery Script
-        const greeting = generateInitialGreeting();
+        // Look up this user's saved AI settings (greeting, voice, custom script) from Supabase
+        let greeting = generateInitialGreeting();
+        let aiVoice = 'Polly.Joanna';
+        if (agentUserId && agentUserId !== 'user') {
+            try {
+                const { createSupabaseAdmin } = await import('@/lib/supabase/admin');
+                const admin = createSupabaseAdmin();
+                const { data: adminUser } = await admin.auth.admin.getUserById(agentUserId);
+                const aiMeta = adminUser?.user?.user_metadata?.ai_settings;
+                if (aiMeta) {
+                    if (aiMeta.ai_voice) aiVoice = aiMeta.ai_voice;
+                    if (aiMeta.greeting_message) {
+                        greeting = aiMeta.greeting_message;
+                    } else {
+                        greeting = generateInitialGreeting({ companyName: DEFAULT_AI_CONFIG.companyName });
+                    }
+                }
+            } catch (e) {
+                console.warn('[AI Entry] Could not fetch user AI settings:', e);
+            }
+        }
 
-        const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=1`;
+        // Personalize the greeting with the lead's name when we have one
+        if (leadName) {
+            greeting = `Hi, is this ${leadName}? ${greeting}`;
+        }
+
+        const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=1`;
 
         return twimlResponse(`
             <Response>
                 <Gather input="speech dtmf" timeout="5" speechTimeout="auto" action="${turnActionUrl}">
-                    <Say voice="Polly.Joanna" language="en-US">${escapeXml(greeting)}</Say>
+                    <Say voice="${aiVoice}" language="en-US">${escapeXml(greeting)}</Say>
                 </Gather>
             </Response>
         `);

@@ -5,11 +5,12 @@ import styles from './IncomingCallModal.module.css';
 
 interface IncomingCallModalProps {
     callerNumber: string;
+    leadName?: string;
     onAccept: () => void;
     onReject: () => void;
 }
 
-export function IncomingCallModal({ callerNumber, onAccept, onReject }: IncomingCallModalProps) {
+export function IncomingCallModal({ callerNumber, leadName, onAccept, onReject }: IncomingCallModalProps) {
     // Handle keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -41,14 +42,15 @@ export function IncomingCallModal({ callerNumber, onAccept, onReject }: Incoming
                     <div className={styles.ring} />
                     <div className={styles.ring} />
                     <div className={styles.avatar}>
-                        {getInitials(callerNumber)}
+                        {getInitials(leadName || callerNumber)}
                     </div>
                 </div>
 
                 {/* Info */}
                 <div className={styles.info}>
-                    <p className={styles.label}>Incoming call from</p>
-                    <h2 id="incoming-call-title" className={styles.number}>{callerNumber}</h2>
+                    <p className={styles.label}>{leadName ? 'Transfer from AI Agent' : 'Incoming call from'}</p>
+                    <h2 id="incoming-call-title" className={styles.number}>{leadName || callerNumber}</h2>
+                    {leadName && <p className={styles.label}>{callerNumber}</p>}
                 </div>
 
                 {/* Actions */}

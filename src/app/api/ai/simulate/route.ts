@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, ChatMessage } from '@/lib/ai/llm';
-import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT } from '@/lib/ai/prompts';
+import { DEFAULT_SYSTEM_PROMPT } from '@/lib/ai/prompts';
 import { createClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 1. Fetch user's custom system prompt and API keys from Supabase if logged in
-        let systemPrompt = SENIOR_SWEEPSTAKES_SYSTEM_PROMPT;
+        let systemPrompt = DEFAULT_SYSTEM_PROMPT;
         let userKeys: { cerebrasKey?: string; replicateToken?: string } = {};
 
         try {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('[AI Simulate] Error:', error);
         return NextResponse.json({
-            reply: "I understand your concern. Let me connect you directly with our senior specialist right now.",
+            reply: "I understand. Let me connect you directly with a member of our team right now.",
             shouldTransfer: true,
             provider: 'fallback_rule',
             latencyMs: 10,

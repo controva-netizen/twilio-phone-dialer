@@ -126,24 +126,61 @@ async function callOpenAICompatible(messages: ChatMessage[], apiKey: string, bas
     }
 }
 
-// 4. Rule-Based Fallback Engine (guarantees call stays alive and transfers if needed)
+// 4. Rule-Based Fallback Engine (guarantees call stays alive and handles objections/transfers)
 function generateRuleFallback(userMessage: string): string {
     const text = userMessage.toLowerCase();
-    
-    if (text.includes('scam') || text.includes('pay') || text.includes('fee')) {
-        return "I understand your caution completely. This is a federally regulated unclaimed asset recovery held in escrow. The registration fee is legally required for IRS tax-exempt filing. Let me connect you directly with our senior specialist right now to walk you through it. [TRANSFER]";
-    }
-    if (text.includes('human') || text.includes('person') || text.includes('agent') || text.includes('specialist') || text.includes('talk to someone')) {
-        return "Of course! Let me connect you directly with our senior claims officer right now. [TRANSFER]";
-    }
-    if (text.includes('yes') || text.includes('ready') || text.includes('sure') || text.includes('ok') || text.includes('okay')) {
-        return "Wonderful. Let me connect you right now with our senior specialist at our desk to finalize your claim. [TRANSFER]";
-    }
-    if (text.includes('no') || text.includes('stop') || text.includes('not interested') || text.includes('bye')) {
-        return "I understand. If you change your mind before the Friday deadline, you can call us back with your claim number. Have a great day.";
+
+    // 1. Transfer request
+    if (text.includes('human') || text.includes('person') || text.includes('agent') || text.includes('specialist') || text.includes('talk to someone') || text.includes('representative') || text.includes('supervisor') || text.includes('transfer')) {
+        return "Of course! Let me connect you directly with our senior specialist right now. [TRANSFER]";
     }
 
-    return "Thank you for sharing that. To make sure everything is handled transparently and securely for your $950,000 claim, let me connect you with our senior claims specialist right now. [TRANSFER]";
+    // 2. Scam objection
+    if (text.includes('scam') || text.includes('fake') || text.includes('fraud') || text.includes('legit')) {
+        return "I completely understand your caution, but this is a federally regulated unclaimed asset recovery for an $850,000 certified check. The mandatory $1,500 registration fee unlocks the escrow release. Let me connect you with our officer to review the file details. [TRANSFER]";
+    }
+
+    // 3. Why pay / deduct from winnings
+    if (text.includes('deduct') || text.includes('take it out') || text.includes('pay first') || text.includes('why do i have to pay') || text.includes('why pay')) {
+        return "Your $850,000 prize is held in a federally locked escrow account that cannot be touched until registered. Federal regulations prohibit commingling prize funds with administrative fees. Let me connect you with our senior specialist to explain. [TRANSFER]";
+    }
+
+    // 4. Cannot afford / don't have money
+    if (text.includes('afford') || text.includes("don't have") || text.includes('no money') || text.includes('too expensive')) {
+        return "I hear you, and that is understandable. Putting it in perspective, a $1,500 registration fee releases a certified check for $850,000, and the claims department accepts major credit cards. Let me connect you with a specialist to discuss options. [TRANSFER]";
+    }
+
+    // 5. Send in writing / official letter
+    if (text.includes('in writing') || text.includes('mail') || text.includes('letter') || text.includes('paperwork') || text.includes('send me')) {
+        return "You will receive a complete physical claims package with bond documents and tax forms overnighted once your claim identity is registered. Let me connect you with our specialist to get your package moving. [TRANSFER]";
+    }
+
+    // 6. Talk to lawyer / family
+    if (text.includes('lawyer') || text.includes('son') || text.includes('daughter') || text.includes('family') || text.includes('wife') || text.includes('husband') || text.includes('attorney')) {
+        return "That is very smart, and I encourage you to share your Claim Number with them. Since the file closes at the end of this week, let me connect you with our specialist so you have all the exact reference details. [TRANSFER]";
+    }
+
+    // 7. How did you get my number / privacy
+    if (text.includes('how did you get') || text.includes('my number') || text.includes('privacy') || text.includes('who are you')) {
+        return "I am Alex from the Consumer Award Resolution Bureau. The prize administrator was legally required to surrender your winner file to our asset recovery division when they could not locate you. Let me connect you with our specialist. [TRANSFER]";
+    }
+
+    // 8. What is this call about / prize details
+    if (text.includes('what is this') || text.includes('how much') || text.includes('prize') || text.includes('award') || text.includes('check')) {
+        return "This is regarding an unclaimed certified check for $850,000 in your name from a national sweepstakes. The file has been flagged for final review before forfeiture. Let me connect you with our specialist right now. [TRANSFER]";
+    }
+
+    // 9. Negative / Refusal
+    if (text.includes('stop calling') || text.includes('not interested') || text.includes('take me off') || text.includes('do not call')) {
+        return "I understand. I will note your file accordingly. Have a great rest of your day.";
+    }
+
+    // 10. Default affirmative / conversational turn
+    if (text.includes('yes') || text.includes('sure') || text.includes('okay') || text.includes('go ahead') || text.includes('tell me more')) {
+        return "Wonderful. Your file shows a certified check for $850,000 waiting in escrow. Let me connect you directly with our senior specialist right now to walk you through the claim verification. [TRANSFER]";
+    }
+
+    return "Thank you for sharing that. To make sure your $850,000 claim file is handled accurately, let me connect you directly with our senior recovery specialist right now. [TRANSFER]";
 }
 
 // Master LLM Dispatcher with Multi-Provider Fallbacks

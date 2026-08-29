@@ -5,11 +5,12 @@ import styles from './IncomingCallBanner.module.css';
 
 interface IncomingCallBannerProps {
     callerNumber: string;
+    leadName?: string;
     onAccept: () => void;
     onReject: () => void;
 }
 
-export function IncomingCallBanner({ callerNumber, onAccept, onReject }: IncomingCallBannerProps) {
+export function IncomingCallBanner({ callerNumber, leadName, onAccept, onReject }: IncomingCallBannerProps) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     // Play ringtone
@@ -87,13 +88,14 @@ export function IncomingCallBanner({ callerNumber, onAccept, onReject }: Incomin
 
                 {/* Avatar */}
                 <div className={styles.avatar}>
-                    {getInitials(callerNumber)}
+                    {getInitials(leadName || callerNumber)}
                 </div>
 
                 {/* Info */}
                 <div className={styles.info}>
-                    <span className={styles.label}>Incoming call</span>
-                    <span className={styles.number}>{callerNumber}</span>
+                    <span className={styles.label}>{leadName ? 'Transfer from AI Agent' : 'Incoming call'}</span>
+                    <span className={styles.number}>{leadName || callerNumber}</span>
+                    {leadName && <span className={styles.number} style={{ fontSize: '0.8em', opacity: 0.75 }}>{callerNumber}</span>}
                 </div>
 
                 {/* Actions */}

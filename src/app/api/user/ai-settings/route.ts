@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT, DEFAULT_SWEEPSTAKES_CONFIG } from '@/lib/ai/prompts';
+import { DEFAULT_SYSTEM_PROMPT, DEFAULT_AI_CONFIG, generateInitialGreeting } from '@/lib/ai/prompts';
 
 interface UserAISettings {
     replicate_api_token: string;
@@ -9,6 +9,7 @@ interface UserAISettings {
     deepgram_api_key: string;
     cartesia_api_key: string;
     ai_voice: string;
+    greeting_message: string;
     system_prompt: string;
     transfer_keywords: string;
     max_turns: number;
@@ -20,8 +21,9 @@ const DEFAULT_AI_SETTINGS: UserAISettings = {
     deepgram_api_key: '',
     cartesia_api_key: '',
     ai_voice: 'Polly.Joanna',
-    system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
-    transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
+    greeting_message: generateInitialGreeting(),
+    system_prompt: DEFAULT_SYSTEM_PROMPT,
+    transfer_keywords: DEFAULT_AI_CONFIG.transferKeywords.join(', '),
     max_turns: 6,
 };
 

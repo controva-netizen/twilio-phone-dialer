@@ -46,7 +46,12 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                 {/* Global Incoming Call Banner */}
                 {twilio.incomingCall && !twilio.activeCall && (
                     <IncomingCallBanner
-                        callerNumber={(twilio.incomingCall.parameters as { From?: string }).From || 'Unknown'}
+                        callerNumber={
+                            twilio.incomingCallInfo?.customerNumber
+                            || (twilio.incomingCall.parameters as { From?: string }).From
+                            || 'Unknown'
+                        }
+                        leadName={twilio.incomingCallInfo?.leadName}
                         onAccept={twilio.acceptIncomingCall}
                         onReject={twilio.rejectIncomingCall}
                     />
@@ -56,6 +61,7 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                 {isOnCall && (
                     <ActiveCallPopup
                         remoteNumber={displayNumber}
+                        displayName={twilio.callerDisplayName || undefined}
                         duration={twilio.duration}
                         isMuted={twilio.isMuted}
                         onMuteToggle={twilio.toggleMute}

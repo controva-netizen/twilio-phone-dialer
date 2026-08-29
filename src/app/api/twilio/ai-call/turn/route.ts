@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, ChatMessage } from '@/lib/ai/llm';
-import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT } from '@/lib/ai/prompts';
+import { DEFAULT_SYSTEM_PROMPT } from '@/lib/ai/prompts';
 
 function escapeXml(unsafe: string): string {
     return unsafe
@@ -16,6 +16,32 @@ function twimlResponse(twiml: string): NextResponse {
     return new NextResponse(twiml, {
         headers: { 'Content-Type': 'text/xml' },
     });
+}
+
+// Builds a <Dial><Client> transfer verb that carries the lead's name and real
+// phone number as custom parameters, so the receiving softphone can show who
+// is calling instead of just the business caller ID.
+function buildTransferTwiml(opts: {
+    sayVoice: string;
+    sayText: string;
+    callerId: string;
+    agentUserId: string;
+    leadName: string;
+    customerNumber: string;
+}): string {
+    const { sayVoice, sayText, callerId, agentUserId, leadName, customerNumber } = opts;
+    return `
+        <Response>
+            <Say voice="${sayVoice}" language="en-US">${escapeXml(sayText)}</Say>
+            <Dial answerOnBridge="true" callerId="${callerId}">
+                <Client>
+                    ${escapeXml(agentUserId)}
+                    <Parameter name="LeadName" value="${escapeXml(leadName || 'Unknown Caller')}" />
+                    <Parameter name="CustomerNumber" value="${escapeXml(customerNumber || callerId)}" />
+                </Client>
+            </Dial>
+        </Response>
+    `;
 }
 
 // Extract params from either POST form data or GET query params
@@ -71,6 +97,11 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         const speechResult = (params['SpeechResult'] || params['speech'] || params['Digits'] || '').trim();
         const agentUserId = params['agentUserId'] || params['userId'] || 'user';
         const callerId = params['callerId'] || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
+        const leadName = params['leadName'] || '';
+        // Twilio always includes the standard call params (From/To) on every request
+        // within a call's lifecycle, including Gather action callbacks — 'To' here is
+        // the customer's real number since this leg was dialed out to them.
+        const customerNumber = params['To'] || params['Called'] || callerId;
         const turnCount = parseInt(params['turnCount'] || '1', 10);
         const historyEncoded = params['history'] || '';
 
@@ -88,20 +119,20 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         if (!speechResult) {
             if (turnCount >= 4) {
                 // Max silence turns reached, transfer to human agent
-                return twimlResponse(`
-                    <Response>
-                        <Say voice="Polly.Joanna" language="en-US">Let me connect you directly with our senior specialist right now.</Say>
-                        <Dial answerOnBridge="true" callerId="${callerId}">
-                            <Client>${agentUserId}</Client>
-                        </Dial>
-                    </Response>
-                `);
+                return twimlResponse(buildTransferTwiml({
+                    sayVoice: 'Polly.Joanna',
+                    sayText: 'Let me connect you directly with a member of our team right now.',
+                    callerId,
+                    agentUserId,
+                    leadName,
+                    customerNumber,
+                }));
             }
 
             return twimlResponse(`
                 <Response>
-                    <Gather input="speech dtmf" timeout="4" action="${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=${turnCount + 1}&amp;history=${encodeURIComponent(JSON.stringify(history))}">
-                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you ready to proceed with your award verification, or would you like me to connect you with an officer?</Say>
+                    <Gather input="speech dtmf" timeout="4" action="${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=${turnCount + 1}&amp;history=${encodeURIComponent(JSON.stringify(history))}">
+                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you able to continue, or would you like me to connect you with a team member?</Say>
                     </Gather>
                 </Response>
             `);
@@ -111,7 +142,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         history.push({ role: 'user', content: speechResult });
 
         // 3. Look up user's custom AI settings and API keys from Supabase
-        let systemPrompt = SENIOR_SWEEPSTAKES_SYSTEM_PROMPT;
+        let systemPrompt = DEFAULT_SYSTEM_PROMPT;
         let aiVoice = 'Polly.Joanna';
         let userKeys: { cerebrasKey?: string; replicateToken?: string } = {};
 
@@ -148,19 +179,19 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
 
         // 5. If AI or customer triggered transfer to human agent
         if (aiResponse.shouldTransfer || turnCount >= 6) {
-            return twimlResponse(`
-                <Response>
-                    <Say voice="${aiVoice}" language="en-US">${escapeXml(aiResponse.text)}</Say>
-                    <Dial answerOnBridge="true" callerId="${callerId}">
-                        <Client>${agentUserId}</Client>
-                    </Dial>
-                </Response>
-            `);
+            return twimlResponse(buildTransferTwiml({
+                sayVoice: aiVoice,
+                sayText: aiResponse.text,
+                callerId,
+                agentUserId,
+                leadName,
+                customerNumber,
+            }));
         }
 
         // 6. Otherwise, speak the response and gather the customer's next reply
         const nextTurn = turnCount + 1;
-        const nextActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;turnCount=${nextTurn}&amp;history=${encodeURIComponent(JSON.stringify(history))}`;
+        const nextActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=${nextTurn}&amp;history=${encodeURIComponent(JSON.stringify(history))}`;
 
         return twimlResponse(`
             <Response>
@@ -174,7 +205,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
         const callerId = process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
         return twimlResponse(`
             <Response>
-                <Say voice="Polly.Joanna" language="en-US">Please hold while I connect you with our senior specialist.</Say>
+                <Say voice="Polly.Joanna" language="en-US">Please hold while I connect you with a member of our team.</Say>
                 <Dial answerOnBridge="true" callerId="${callerId}">
                     <Client>user</Client>
                 </Dial>

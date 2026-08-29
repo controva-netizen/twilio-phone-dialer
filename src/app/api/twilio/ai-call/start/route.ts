@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const to = body.to || body.phoneNumber || '';
         const requestedCallerId = body.callerId || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
+        const leadName = (body.leadName || body.name || '').toString().trim();
 
         if (!to) {
             return NextResponse.json({ error: 'Destination phone number is required' }, { status: 400 });
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
         const client = twilio(apiKey, apiSecret, { accountSid });
         const appUrl = await getPublicAppUrl(request);
 
-        const aiWebhookUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(cleanCallerId)}`;
+        const aiWebhookUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(cleanCallerId)}&leadName=${encodeURIComponent(leadName)}`;
 
         console.log(`[AI Call Start] Dialing customer ${cleanTo} from ${cleanCallerId} with webhook: ${aiWebhookUrl}`);
 

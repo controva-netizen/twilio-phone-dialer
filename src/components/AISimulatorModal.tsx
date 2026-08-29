@@ -18,14 +18,14 @@ interface AISimulatorModalProps {
 }
 
 const SAMPLE_OBJECTIONS = [
-    "Is this a scam? Why do I have to pay?",
-    "I don't have the money to pay this fee.",
-    "Why can't you deduct it from my winnings?",
-    "I want to talk to my lawyer and family first.",
+    "I have to pay? That sounds like a scam.",
+    "Why can't you deduct the fee from my winnings?",
+    "I don't have $1,500 for a registration fee.",
     "Can you send me something in writing first?",
+    "I want to talk to my lawyer or son first.",
     "How did you get my name and phone number?",
-    "I never heard of this sweepstakes.",
-    "Can I speak with a human specialist right now?",
+    "What is the claim number and deadline?",
+    "Can I speak with a live senior specialist?",
 ];
 
 export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
@@ -36,7 +36,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
     const [messages, setMessages] = useState<Message[]>([
         {
             sender: 'ai',
-            text: "Hello! My name is Officer Alex Miller with the Federal Consumer Award Oversight Bureau. I'm calling regarding a time-sensitive unclaimed consumer award file for $950,000. Are you available for just a moment so I can share the details with you?",
+            text: "Hello! My name is Alex, and I am a Senior Recovery Specialist with the Consumer Award Resolution Bureau. I have a time-sensitive file here regarding an unclaimed sweepstakes award in your name. Do you have a quick moment to speak with me?",
         },
     ]);
     const [inputText, setInputText] = useState('');
@@ -164,7 +164,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
         setMessages([
             {
                 sender: 'ai',
-                text: "Hello! My name is Officer Alex Miller with the Federal Consumer Award Oversight Bureau. I'm calling regarding a time-sensitive unclaimed consumer award file for $950,000. Are you available for just a moment so I can share the details with you?",
+                text: "Hi, this is Alex calling from our company. I'm reaching out regarding your recent inquiry. Do you have a moment to talk?",
             },
         ]);
     };

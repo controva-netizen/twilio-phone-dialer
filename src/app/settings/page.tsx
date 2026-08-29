@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { AppLayout } from '@/components/Layout';
-import { SENIOR_SWEEPSTAKES_SYSTEM_PROMPT, DEFAULT_SWEEPSTAKES_CONFIG } from '@/lib/ai/prompts';
+import { DEFAULT_SYSTEM_PROMPT, DEFAULT_AI_CONFIG, generateInitialGreeting } from '@/lib/ai/prompts';
 import styles from './page.module.css';
 
 interface PhoneNumber {
@@ -25,6 +25,7 @@ interface AISettings {
     deepgram_api_key: string;
     cartesia_api_key: string;
     ai_voice: string;
+    greeting_message: string;
     system_prompt: string;
     transfer_keywords: string;
     max_turns: number;
@@ -52,8 +53,9 @@ export default function SettingsPage() {
         deepgram_api_key: '',
         cartesia_api_key: '',
         ai_voice: 'Polly.Danielle-Neural',
-        system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
-        transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
+        greeting_message: generateInitialGreeting(),
+        system_prompt: DEFAULT_SYSTEM_PROMPT,
+        transfer_keywords: DEFAULT_AI_CONFIG.transferKeywords.join(', '),
         max_turns: 6,
     });
     const [savingAI, setSavingAI] = useState(false);
@@ -93,24 +95,14 @@ export default function SettingsPage() {
                 console.error('Failed to fetch voice settings:', err);
             }
 
-            // 1. Check local storage for immediate recovery
-            try {
-                const localData = localStorage.getItem('marvik_ai_settings');
-                if (localData) {
-                    const parsed = JSON.parse(localData);
-                    setAiSettings(prev => ({ ...prev, ...parsed }));
-                }
-            } catch {}
-
-            // 2. Fetch AI settings from server
+            // Fetch AI settings from server (source of truth — API keys are never cached
+            // client-side in localStorage, since that would leave them readable in
+            // plaintext to any script or anyone with access to the browser profile).
             try {
                 const res = await fetch('/api/user/ai-settings');
                 const data = await res.json();
                 if (data && !data.error) {
                     setAiSettings(prev => ({ ...prev, ...data }));
-                    try {
-                        localStorage.setItem('marvik_ai_settings', JSON.stringify(data));
-                    } catch {}
                 }
             } catch (err) {
                 console.error('Failed to fetch AI settings:', err);
@@ -165,12 +157,7 @@ export default function SettingsPage() {
         setSavingAI(true);
         setAiSavedSuccess(false);
         try {
-            // Save in localStorage immediately
-            try {
-                localStorage.setItem('marvik_ai_settings', JSON.stringify(aiSettings));
-            } catch {}
-
-            // Save in Supabase Auth user_metadata
+            // Save in Supabase Auth user_metadata (server-side only — not cached client-side)
             await fetch('/api/user/ai-settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -185,11 +172,12 @@ export default function SettingsPage() {
         }
     };
 
-    const handleLoadSweepstakesTemplate = () => {
+    const handleLoadDefaultTemplate = () => {
         setAiSettings(prev => ({
             ...prev,
-            system_prompt: SENIOR_SWEEPSTAKES_SYSTEM_PROMPT,
-            transfer_keywords: DEFAULT_SWEEPSTAKES_CONFIG.transferKeywords.join(', '),
+            greeting_message: generateInitialGreeting(),
+            system_prompt: DEFAULT_SYSTEM_PROMPT,
+            transfer_keywords: DEFAULT_AI_CONFIG.transferKeywords.join(', '),
         }));
     };
 
@@ -207,10 +195,10 @@ export default function SettingsPage() {
                             <h2 className={styles.sectionTitle}>🤖 AI Voice Agent & Script Engine</h2>
                             <button
                                 className={styles.templateBtn}
-                                onClick={handleLoadSweepstakesTemplate}
-                                title="Load Senior Sweepstakes Recovery Script & 15 Rebuttals"
+                                onClick={handleLoadDefaultTemplate}
+                                title="Reset to the default greeting, prompt, and transfer keywords"
                             >
-                                📋 Reload Sweepstakes Script
+                                📋 Reset to Default Template
                             </button>
                         </div>
                         <div className={styles.card}>
@@ -274,15 +262,29 @@ export default function SettingsPage() {
                                 />
                             </div>
 
-                            {/* System Prompt & Rebuttal Knowledge Base */}
+                            {/* Opening Greeting */}
                             <div className={styles.settingStacked}>
                                 <div className={styles.settingInfo}>
-                                    <span className={styles.settingLabel}>AI System Prompt & 15 Rebuttals Knowledge Base</span>
-                                    <span className={styles.settingDesc}>Full script flow, persona instructions, and objection responses</span>
+                                    <span className={styles.settingLabel}>Opening Greeting</span>
+                                    <span className={styles.settingDesc}>The first thing the AI says when the customer picks up</span>
                                 </div>
                                 <textarea
                                     className={styles.textareaPrompt}
-                                    rows={10}
+                                    rows={3}
+                                    value={aiSettings.greeting_message}
+                                    onChange={(e) => setAiSettings({ ...aiSettings, greeting_message: e.target.value })}
+                                />
+                            </div>
+
+                            {/* System Prompt & FAQ Knowledge Base */}
+                            <div className={styles.settingStacked}>
+                                <div className={styles.settingInfo}>
+                                    <span className={styles.settingLabel}>AI System Prompt & FAQ Knowledge Base</span>
+                                    <span className={styles.settingDesc}>Explain the purpose of your calls and paste in your FAQs — the AI will use this to answer caller questions and decide when to transfer</span>
+                                </div>
+                                <textarea
+                                    className={styles.textareaPrompt}
+                                    rows={14}
                                     value={aiSettings.system_prompt}
                                     onChange={(e) => setAiSettings({ ...aiSettings, system_prompt: e.target.value })}
                                 />

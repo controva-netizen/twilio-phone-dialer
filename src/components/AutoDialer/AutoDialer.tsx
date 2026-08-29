@@ -174,7 +174,7 @@ export function AutoDialer() {
                 const res = await fetch('/api/twilio/ai-call/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to: entry.number, agentUserId }),
+                    body: JSON.stringify({ to: entry.number, agentUserId, leadName: entry.name || '' }),
                 });
                 const data = await res.json();
 

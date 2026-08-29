@@ -13,11 +13,17 @@ export interface CallOptions {
     customGreeting?: string;
 }
 
+export interface IncomingCallInfo {
+    leadName?: string;
+    customerNumber?: string;
+}
+
 interface UseTwilioDeviceReturn {
     device: Device | null;
     status: DeviceStatus;
     error: string | null;
     incomingCall: Call | null;
+    incomingCallInfo: IncomingCallInfo | null;
     twilioIdentity: string | null;
     makeCall: (phoneNumber: string, callerId?: string, options?: CallOptions) => Promise<Call | null>;
     acceptIncomingCall: () => void;
@@ -29,6 +35,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     const [status, setStatus] = useState<DeviceStatus>('offline');
     const [error, setError] = useState<string | null>(null);
     const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+    const [incomingCallInfo, setIncomingCallInfo] = useState<IncomingCallInfo | null>(null);
     const [twilioIdentity, setTwilioIdentity] = useState<string | null>(null);
 
     const deviceRef = useRef<Device | null>(null);
@@ -83,13 +90,22 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
                     setIncomingCall(call);
                     setStatus('busy');
 
+                    // Custom TwiML <Parameter> values set on the <Client> noun during an AI
+                    // warm transfer (LeadName / CustomerNumber) — lets the softphone show who
+                    // is actually calling instead of just the business caller ID.
+                    const leadName = call.customParameters?.get('LeadName');
+                    const customerNumber = call.customParameters?.get('CustomerNumber');
+                    setIncomingCallInfo(leadName || customerNumber ? { leadName, customerNumber } : null);
+
                     call.on('cancel', () => {
                         setIncomingCall(null);
+                        setIncomingCallInfo(null);
                         setStatus('ready');
                     });
 
                     call.on('disconnect', () => {
                         setIncomingCall(null);
+                        setIncomingCallInfo(null);
                         setStatus('ready');
                     });
                 });
@@ -186,6 +202,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         if (incomingCall) {
             incomingCall.reject();
             setIncomingCall(null);
+            setIncomingCallInfo(null);
             setStatus('ready');
         }
     }, [incomingCall]);
@@ -218,6 +235,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
         status,
         error,
         incomingCall,
+        incomingCallInfo,
         twilioIdentity,
         makeCall,
         acceptIncomingCall,

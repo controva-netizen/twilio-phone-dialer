@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, ReactNode, useCallback, useState, useEffect } from 'react';
 import { Call } from '@twilio/voice-sdk';
-import { useTwilioDevice } from '@/hooks/useTwilioDevice';
+import { useTwilioDevice, IncomingCallInfo } from '@/hooks/useTwilioDevice';
 import { useCallState } from '@/hooks/useCallState';
 import type { DeviceStatus, CallStatus, CallDirection } from '@/types';
 
@@ -14,6 +14,7 @@ interface TwilioContextValue {
     deviceStatus: DeviceStatus;
     deviceError: string | null;
     incomingCall: Call | null;
+    incomingCallInfo: IncomingCallInfo | null;
     twilioIdentity: string | null;
     makeCall: (phoneNumber: string, callerId?: string, options?: CallOptions) => Promise<Call | null>;
     acceptIncomingCall: () => void;
@@ -26,6 +27,8 @@ interface TwilioContextValue {
     duration: number;
     direction: CallDirection | null;
     remoteNumber: string | null;
+    /** Lead name captured from the incoming call's custom parameters, kept for the life of the active call. */
+    callerDisplayName: string | null;
     setActiveCall: (call: Call | null, direction: CallDirection, explicitNumber?: string) => void;
     hangup: () => void;
     toggleMute: () => void;
@@ -48,6 +51,7 @@ export function TwilioProvider({ children }: { children: ReactNode }) {
         status: deviceStatus,
         error: deviceError,
         incomingCall,
+        incomingCallInfo,
         twilioIdentity,
         makeCall,
         acceptIncomingCall: rawAccept,
@@ -67,26 +71,37 @@ export function TwilioProvider({ children }: { children: ReactNode }) {
         sendDTMF,
     } = useCallState();
 
+    const [callerDisplayName, setCallerDisplayName] = useState<string | null>(null);
+
     // Wrap accept to also set call state
     const acceptIncomingCall = useCallback(() => {
         if (incomingCall) {
             const params = incomingCall.parameters as { From?: string };
-            const callerNumber = params.From || 'Unknown';
+            // Prefer the real customer number carried via <Parameter> on a warm transfer
+            // over the raw From (which is just the business caller ID on transferred calls).
+            const callerNumber = incomingCallInfo?.customerNumber || params.From || 'Unknown';
+            setCallerDisplayName(incomingCallInfo?.leadName || null);
             rawAccept();
             setActiveCall(incomingCall, 'incoming', callerNumber);
         }
-    }, [incomingCall, rawAccept, setActiveCall]);
+    }, [incomingCall, incomingCallInfo, rawAccept, setActiveCall]);
 
     // Wrap reject (just pass through)
     const rejectIncomingCall = useCallback(() => {
         rawReject();
     }, [rawReject]);
 
+    // Clear the lead name once the call ends
+    useEffect(() => {
+        if (callStatus === 'idle') setCallerDisplayName(null);
+    }, [callStatus]);
+
     const value: TwilioContextValue = {
         device,
         deviceStatus,
         deviceError,
         incomingCall,
+        incomingCallInfo,
         twilioIdentity,
         makeCall,
         acceptIncomingCall,
@@ -97,6 +112,7 @@ export function TwilioProvider({ children }: { children: ReactNode }) {
         duration,
         direction,
         remoteNumber,
+        callerDisplayName,
         setActiveCall,
         hangup,
         toggleMute,

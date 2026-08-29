@@ -5,6 +5,7 @@ import styles from './ActiveCallPopup.module.css';
 
 interface ActiveCallPopupProps {
     remoteNumber: string;
+    displayName?: string;
     duration: number;
     isMuted: boolean;
     onMuteToggle: () => void;
@@ -14,6 +15,7 @@ interface ActiveCallPopupProps {
 
 export function ActiveCallPopup({
     remoteNumber,
+    displayName,
     duration,
     isMuted,
     onMuteToggle,
@@ -100,7 +102,7 @@ export function ActiveCallPopup({
             >
                 <div className={styles.minimizedContent}>
                     <div className={styles.statusDot} />
-                    <span className={styles.minimizedNumber}>{remoteNumber}</span>
+                    <span className={styles.minimizedNumber}>{displayName || remoteNumber}</span>
                     <span className={styles.minimizedDuration}>{formatDuration(duration)}</span>
                 </div>
                 <div className={styles.minimizedActions}>
@@ -147,10 +149,11 @@ export function ActiveCallPopup({
             {/* Contact */}
             <div className={styles.contact}>
                 <div className={styles.avatar}>
-                    {getInitials(remoteNumber)}
+                    {getInitials(displayName || remoteNumber)}
                 </div>
                 <div className={styles.contactInfo}>
-                    <span className={styles.name}>{remoteNumber}</span>
+                    <span className={styles.name}>{displayName || remoteNumber}</span>
+                    {displayName && <span className={styles.duration}>{remoteNumber}</span>}
                     <span className={styles.duration}>{formatDuration(duration)}</span>
                 </div>
             </div>

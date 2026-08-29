@@ -98,7 +98,7 @@ export default function Home() {
 
     // Call Strategy / Mode: direct | script | ai_agent
     const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
-    const [selectedCampaign, setSelectedCampaign] = useState('Senior Sweepstakes Recovery (15 Rebuttals)');
+    const [selectedCampaign, setSelectedCampaign] = useState('Default AI Campaign');
     const [showAISimulator, setShowAISimulator] = useState(false);
     const [aiCallNotice, setAiCallNotice] = useState<string | null>(null);
     const [aiDialing, setAiDialing] = useState(false);
@@ -328,7 +328,7 @@ export default function Home() {
                                         <div className={styles.aiPulseDot}></div>
                                         <div className={styles.aiBadgeText}>
                                             <span className={styles.aiBadgeTitle}>AI Agent Armed (Replicate / Cerebras)</span>
-                                            <span className={styles.aiBadgeSub}>Senior Sweepstakes Recovery (15 Rebuttals)</span>
+                                            <span className={styles.aiBadgeSub}>{selectedCampaign} — configured in Settings</span>
                                         </div>
                                     </div>
                                     <div className={styles.aiActions}>

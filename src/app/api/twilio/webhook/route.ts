@@ -88,53 +88,58 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         const direction = params['Direction'] || ''
         const callSid = params['CallSid'] || ''
 
-        // Check all possible parameters for the destination number
-        let to = params['ToNumber'] || 
-                 params['phoneNumber'] || 
-                 params['PhoneNumber'] || 
-                 params['called'] || 
-                 params['Called'] || 
-                 params['destination'] || 
-                 params['number'] || 
-                 params['phone_number'] || 
-                 params['To'] || 
-                 ''
+        console.log(`[Twilio Webhook] Raw params: From=${from}, Direction=${direction}, To=${params['To']}, CallSid=${callSid}`)
 
-        // If 'to' is a TwiML App SID (starts with AP) or 'client:', look for the real destination number
-        if (to.startsWith('AP') || to.startsWith('client:') || !to) {
-            const possibleKeys = ['ToNumber', 'phoneNumber', 'PhoneNumber', 'called', 'Called', 'destination', 'number', 'phone_number']
-            for (const key of possibleKeys) {
-                if (params[key] && !params[key].startsWith('AP') && !params[key].startsWith('client:')) {
-                    to = params[key]
-                    break
-                }
-            }
-            // If still not found, check any param with digits
-            if (to.startsWith('AP') || to.startsWith('client:') || !to) {
-                const digitParam = Object.entries(params).find(([k, v]) => 
-                    !v.startsWith('AP') && 
-                    !v.startsWith('client:') && 
-                    !v.startsWith('CA') && 
-                    !v.startsWith('AC') && 
-                    v.replace(/[^0-9]/g, '').length >= 3
-                )
-                if (digitParam) {
-                    to = digitParam[1]
-                }
-            }
-        }
-
-        console.log(`[Twilio Webhook] Direction: ${direction}, Resolved To: ${to}, From: ${from}, CallSid: ${callSid}`)
-
-        // Outgoing call: When browser client dials via TwiML App,
-        // From starts with "client:" (e.g. client:user_id or client:anonymous)
-        const isOutgoing = from.startsWith('client:') || direction === 'outbound-api' || (to && !to.startsWith('client:') && !to.startsWith('AP') && direction !== 'inbound')
+        // ─── Determine call direction ─────────────────────────────────────────
+        // OUTGOING: From starts with "client:" — browser SDK always sets this.
+        //           Also treat explicit outbound-api direction as outgoing.
+        const isOutgoing = from.startsWith('client:') || direction === 'outbound-api'
 
         if (isOutgoing) {
+            // For outgoing calls, find the real destination number the user typed.
+            // Prefer custom params sent by the browser SDK, fallback to Twilio 'To'.
+            let to = params['ToNumber'] ||
+                     params['phoneNumber'] ||
+                     params['PhoneNumber'] ||
+                     params['called'] ||
+                     params['Called'] ||
+                     params['destination'] ||
+                     params['number'] ||
+                     params['phone_number'] ||
+                     ''
+
+            // If still empty or is a TwiML App SID / client identity, dig further
+            if (!to || to.startsWith('AP') || to.startsWith('client:')) {
+                // Check Twilio 'To' — for TwiML App calls this is the App SID; skip those
+                const twilioTo = params['To'] || ''
+                if (twilioTo && !twilioTo.startsWith('AP') && !twilioTo.startsWith('client:')) {
+                    to = twilioTo
+                }
+            }
+
+            // Last resort: scan all params for a phone-number-like value
+            if (!to || to.startsWith('AP') || to.startsWith('client:')) {
+                const digitParam = Object.entries(params).find(([k, v]) =>
+                    k !== 'From' &&
+                    k !== 'CallSid' &&
+                    !v.startsWith('AP') &&
+                    !v.startsWith('client:') &&
+                    !v.startsWith('CA') &&
+                    !v.startsWith('AC') &&
+                    !v.startsWith('SK') &&
+                    v.replace(/[^0-9]/g, '').length >= 7
+                )
+                if (digitParam) to = digitParam[1]
+            }
+
+            console.log(`[Twilio Webhook] OUTGOING → to=${to}, from=${from}`)
             return await handleOutgoingCall(to, from, params, request)
         }
 
-        // Incoming call (from phone number to Twilio number)
+        // INCOMING: real phone call hitting our Twilio number.
+        // Twilio sets To = our Twilio phone number, From = caller's real number.
+        const to = params['To'] || params['Called'] || params['called'] || ''
+        console.log(`[Twilio Webhook] INCOMING → to=${to}, from=${from}, direction=${direction}`)
         return await handleIncomingCall(to, from, request)
     } catch (error) {
         console.error('[Twilio Webhook] Error:', error)
@@ -163,7 +168,7 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     // 0. Special: In-Browser AI Test Call (*99 or 'test')
     if (to === '*99' || to === '99' || to.toLowerCase() === 'test' || callMode === 'test') {
         console.log(`[Twilio Webhook] In-Browser AI Voice Test Call connected for user ${userId}`)
-        const greeting = `Hello! This is your Marvik AI Voice Agent test line. I am running live with your Senior Sweepstakes Recovery Script and 15 objection rebuttals. Go ahead and test an objection or question with me right now!`
+        const greeting = `Hello! This is your Marvik AI Voice Agent test line. I am running live with your saved script and knowledge base. Go ahead and test a question with me right now!`
         const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=%2B13072076444&amp;turnCount=1`
 
         return twimlResponse(`
@@ -297,48 +302,74 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
     // Find which user owns the dialed number
     const dialedNumber = to || ''
 
-    const { data: numberRecord, error } = await supabase
+    // Try exact match first, then E.164-normalized match
+    let numberRecord = null
+
+    const exactResult = await supabase
         .from('user_phone_numbers')
         .select('user_id, call_recording_enabled, voicemail_enabled, voicemail_greeting_url')
         .eq('phone_number', dialedNumber)
         .limit(1)
         .single()
 
-    if (error || !numberRecord) {
-        console.warn(`[Twilio Webhook] No user found for number ${dialedNumber}, using fallback`)
-        // Fallback: ring with a generic client name
-        return twimlResponse(`
-            <Response>
-                <Dial answerOnBridge="true">
-                    <Client>user</Client>
-                </Dial>
-            </Response>
-        `)
+    if (!exactResult.error && exactResult.data) {
+        numberRecord = exactResult.data
+    } else {
+        // Try E.164 normalized version (e.g. +13072076444 vs 3072076444)
+        const normalizedNumber = formatE164(dialedNumber)
+        if (normalizedNumber && normalizedNumber !== dialedNumber) {
+            const normalizedResult = await supabase
+                .from('user_phone_numbers')
+                .select('user_id, call_recording_enabled, voicemail_enabled, voicemail_greeting_url')
+                .eq('phone_number', normalizedNumber)
+                .limit(1)
+                .single()
+            if (!normalizedResult.error && normalizedResult.data) {
+                numberRecord = normalizedResult.data
+            }
+        }
     }
 
-    const userId = numberRecord.user_id
-    const recordEnabled = numberRecord.call_recording_enabled
-    const voicemailEnabled = numberRecord.voicemail_enabled
+    // Resolve the agent userId — fall back to first user in the system if number not mapped
+    let userId: string | null = numberRecord?.user_id || null
+    if (!userId) {
+        console.warn(`[Twilio Webhook] No user found for number ${dialedNumber}, using first available user`)
+        try {
+            const { data: anyNumber } = await supabase
+                .from('user_phone_numbers')
+                .select('user_id')
+                .limit(1)
+                .single()
+            if (anyNumber?.user_id) userId = anyNumber.user_id
+        } catch {}
+    }
 
-    // Build the app base URL from the incoming request
+    const agentUserId = userId || 'user'
     const appUrl = await getPublicAppUrl(request)
+    const callerId = to || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444'
 
-    // Build the <Dial> verb attributes
-    const recordAttr = recordEnabled ? ' record="record-from-answer-dual"' : ''
-    const recordCallbackAttr = recordEnabled
-        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${userId}" recordingStatusCallbackEvent="completed"`
+    console.log(`[Twilio Webhook] Incoming call → routing through AI agent for user ${agentUserId}`)
+
+    // Route through the AI agent — same entry point used for outgoing AI calls.
+    // The AI will greet the caller, run the conversation, then warm-transfer
+    // to the agent's browser softphone (identified by agentUserId / their UUID).
+    const aiEntryUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}`
+
+    const recordAttr = numberRecord?.call_recording_enabled ? ' record="record-from-answer-dual"' : ''
+    const recordCallbackAttr = numberRecord?.call_recording_enabled
+        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${agentUserId}" recordingStatusCallbackEvent="completed"`
         : ''
-
-    // If voicemail is enabled, set an action URL to handle no-answer
+    const voicemailEnabled = numberRecord?.voicemail_enabled
     const actionAttr = voicemailEnabled
-        ? ` action="${appUrl}/api/twilio/voicemail?user_id=${userId}&amp;from=${encodeURIComponent(from || '')}"`
+        ? ` action="${appUrl}/api/twilio/voicemail?user_id=${agentUserId}&amp;from=${encodeURIComponent(from || '')}"`
         : ''
 
+    // <Number url=...> fires the AI entry webhook when the call is answered,
+    // then bridges the two legs together once the AI connects.
     return twimlResponse(`
         <Response>
-            <Say voice="Polly.Sofia">Thank you for calling. Please hold while we connect your call.</Say>
-            <Dial answerOnBridge="true"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="25">
-                <Client>${userId}</Client>
+            <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="30">
+                <Number url="${aiEntryUrl}">${from}</Number>
             </Dial>
         </Response>
     `)
