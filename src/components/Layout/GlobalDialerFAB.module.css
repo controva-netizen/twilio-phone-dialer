@@ -9,6 +9,13 @@
     font-family: var(--font-family);
 }
 
+@media (max-width: 768px) {
+    .wrapper {
+        bottom: 20px;
+        right: 16px;
+    }
+}
+
 /* Floating Action Button (Matches Screenshot Red Circle) */
 .fab {
     width: 58px;

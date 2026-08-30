@@ -313,3 +313,19 @@
     width: 16px;
     height: 16px;
 }
+
+/* Mobile: popup spans full width at top */
+@media (max-width: 768px) {
+    .popup {
+        width: calc(100vw - 24px);
+        max-width: 400px;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        top: 12px !important;
+        cursor: default;
+    }
+
+    .popup.dragging {
+        cursor: default;
+    }
+}

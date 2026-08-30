@@ -10,9 +10,10 @@ interface HeaderProps {
     deviceStatus?: 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
     error?: string | null;
     user?: { email?: string | null };
+    onMenuToggle?: () => void;
 }
 
-export function Header({ deviceStatus = 'ready', error, user }: HeaderProps) {
+export function Header({ deviceStatus = 'ready', error, user, onMenuToggle }: HeaderProps) {
     const [balance, setBalance] = useState(25.00);
     const [showTopUpModal, setShowTopUpModal] = useState(false);
     const [selectedAmount, setSelectedAmount] = useState(10);
@@ -25,8 +26,18 @@ export function Header({ deviceStatus = 'ready', error, user }: HeaderProps) {
 
     return (
         <header className={styles.header}>
-            {/* Left: View title */}
+            {/* Left: Hamburger (mobile) + View title */}
             <div className={styles.left}>
+                {onMenuToggle && (
+                    <button
+                        className={styles.hamburgerBtn}
+                        onClick={onMenuToggle}
+                        aria-label="Toggle sidebar menu"
+                        title="Menu"
+                    >
+                        <HamburgerIcon />
+                    </button>
+                )}
                 <div className={styles.titleWrapper}>
                     <h1 className={styles.title}>Phone Dialer</h1>
                     <span className={styles.subtitle}>WebRTC Cloud Calling Suite</span>
@@ -35,7 +46,7 @@ export function Header({ deviceStatus = 'ready', error, user }: HeaderProps) {
 
             {/* Right: Actions, Balance, and Status */}
             <div className={styles.right}>
-                {/* Balance Widget (Requested Feature) */}
+                {/* Balance Widget */}
                 <div className={styles.balanceWidget}>
                     <div className={styles.balanceInfo}>
                         <span className={styles.balanceLabel}>Balance</span>
@@ -112,5 +123,15 @@ export function Header({ deviceStatus = 'ready', error, user }: HeaderProps) {
                 </div>
             )}
         </header>
+    );
+}
+
+function HamburgerIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
     );
 }

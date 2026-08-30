@@ -8,6 +8,34 @@
     border-bottom: 1px solid #f1f5f9;
     flex-shrink: 0;
     z-index: 20;
+    gap: 12px;
+}
+
+/* Hamburger Button (mobile only) */
+.hamburgerBtn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #475569;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+}
+
+.hamburgerBtn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+@media (max-width: 768px) {
+    .hamburgerBtn {
+        display: flex;
+    }
 }
 
 .left {
@@ -38,6 +66,36 @@
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .header {
+        padding: 0 16px;
+        height: 60px;
+    }
+
+    .right {
+        gap: 8px;
+    }
+
+    .subtitle {
+        display: none;
+    }
+
+    .balanceLabel {
+        display: none;
+    }
+
+    .statusText {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .balanceWidget {
+        display: none;
+    }
 }
 
 /* Balance Widget */

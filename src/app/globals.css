@@ -56,6 +56,7 @@
   /* Layout Dimensions */
   --sidebar-width: 240px;
   --header-height: 64px;
+  --mobile-breakpoint: 768px;
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -135,6 +136,12 @@ body {
   overflow: hidden;
 }
 
+@media (max-width: 768px) {
+  body {
+    overflow: auto;
+  }
+}
+
 /* App Container */
 .app {
   display: flex;
@@ -142,6 +149,15 @@ body {
   width: 100vw;
   overflow: hidden;
   background: var(--color-bg-primary);
+}
+
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
 }
 
 /* Main Content Area */
@@ -153,6 +169,31 @@ body {
   overflow-y: auto;
   background: radial-gradient(circle at 10% 0%, #fdf2f8 0%, #fff1f2 10%, #f8fafc 35%, #ffffff 100%);
   position: relative;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    height: auto;
+    min-height: calc(100vh - 56px);
+    overflow-y: visible;
+  }
+}
+
+/* Sidebar Overlay for Mobile */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 49;
+  backdrop-filter: blur(2px);
+}
+
+@media (max-width: 768px) {
+  .sidebar-overlay.open {
+    display: block;
+  }
 }
 
 /* Scrollbar */

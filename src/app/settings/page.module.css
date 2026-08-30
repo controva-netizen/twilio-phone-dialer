@@ -5,6 +5,20 @@
     overflow-y: auto;
     padding: var(--spacing-xl);
     max-width: 860px;
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 16px;
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 12px;
+    }
 }
 
 .header {

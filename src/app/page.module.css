@@ -123,7 +123,7 @@
 /* Main 2-Column Layout */
 .mainColumns {
     display: grid;
-    grid-template-columns: 480px 1fr;
+    grid-template-columns: minmax(300px, 480px) 1fr;
     gap: 24px;
     align-items: flex-start;
 }
@@ -578,6 +578,12 @@
 }
 
 /* Responsive */
+@media (max-width: 1100px) {
+    .mainColumns {
+        grid-template-columns: minmax(280px, 380px) 1fr;
+    }
+}
+
 @media (max-width: 1024px) {
     .statsBar {
         grid-template-columns: repeat(2, 1fr);
@@ -589,9 +595,37 @@
 
 @media (max-width: 640px) {
     .statsBar {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
     }
     .workspace {
         padding: 16px;
+        gap: 16px;
+    }
+    .dialerContainer {
+        padding: 16px;
+        border-radius: 14px;
+    }
+    .historyContainer {
+        padding: 16px 16px;
+        min-height: 300px;
+    }
+    .filterTabs {
+        flex-wrap: wrap;
+    }
+    .tabBtn {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 400px) {
+    .statsBar {
+        grid-template-columns: 1fr;
+    }
+    .workspace {
+        padding: 12px;
+    }
+    .strategyTabs {
+        grid-template-columns: 1fr;
     }
 }

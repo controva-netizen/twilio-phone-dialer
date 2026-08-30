@@ -1,6 +1,6 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { GlobalDialerFAB } from './GlobalDialerFAB';
@@ -23,6 +23,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFilterChange, deviceStatus: propDeviceStatus, error: propError, user }: AppLayoutProps) {
     const twilio = useTwilio();
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Use props if provided, otherwise fall back to context
     const deviceStatus = propDeviceStatus || twilio.deviceStatus;
@@ -31,9 +32,39 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
     const isOnCall = twilio.callStatus === 'connected' || twilio.callStatus === 'connecting' || twilio.callStatus === 'ringing';
     const displayNumber = twilio.remoteNumber || 'Unknown';
 
+    // Close sidebar on route change (mobile UX)
+    useEffect(() => {
+        setSidebarOpen(false);
+    }, []);
+
+    // Prevent body scroll when sidebar is open on mobile
+    useEffect(() => {
+        if (sidebarOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => { document.body.style.overflow = ''; };
+    }, [sidebarOpen]);
+
     return (
         <div className="app">
-            <Sidebar callFilter={callFilter} onCallFilterChange={onCallFilterChange} />
+            {/* Overlay for mobile sidebar */}
+            {sidebarOpen && (
+                <div
+                    className="sidebar-overlay open"
+                    onClick={() => setSidebarOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
+
+            <Sidebar
+                callFilter={callFilter}
+                onCallFilterChange={onCallFilterChange}
+                isOpen={sidebarOpen}
+                onClose={() => setSidebarOpen(false)}
+            />
+
             <div className="main-content">
                 <Header
                     onAccessibilityClick={onAccessibilityClick}
@@ -41,6 +72,7 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                     deviceStatus={deviceStatus}
                     error={error}
                     user={user}
+                    onMenuToggle={() => setSidebarOpen(prev => !prev)}
                 />
 
                 {/* Global Incoming Call Banner */}

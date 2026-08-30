@@ -8,9 +8,11 @@ import styles from './Sidebar.module.css';
 interface SidebarProps {
     callFilter?: string;
     onCallFilterChange?: (filter: any) => void;
+    isOpen?: boolean;
+    onClose?: () => void;
 }
 
-export function Sidebar({ }: SidebarProps) {
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
     const [unreadVoicemails, setUnreadVoicemails] = useState(0);
     const [defaultNumber, setDefaultNumber] = useState<string>('');
@@ -48,7 +50,7 @@ export function Sidebar({ }: SidebarProps) {
     const isSettingsPage = pathname === '/settings' || pathname.startsWith('/settings/');
 
     return (
-        <aside className={styles.sidebar}>
+        <aside className={`${styles.sidebar} ${isOpen ? styles.open : ''}`}>
             {/* Marvik Dialer Logo Header */}
             <div className={styles.brandHeader}>
                 <div className={styles.brandLogo}>
