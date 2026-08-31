@@ -20,9 +20,25 @@ interface PhoneNumber {
     is_default: boolean;
 }
 
+interface LiveSingleAiCall {
+    callSid: string;
+    number: string;
+    status: 'initiated' | 'ringing' | 'in-progress' | 'voicemail' | 'transferring' | 'completed' | 'no-answer' | 'busy' | 'failed' | 'canceled';
+    duration: number;
+    turns: Array<{ role: 'user' | 'assistant' | 'system'; text: string; timestamp: number }>;
+    note?: string;
+}
+
+function formatDuration(seconds?: number): string {
+    if (!seconds || seconds <= 0) return '00:00';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 export default function Home() {
     const twilio = useTwilio();
-    const { history, filter, setFilter, addEntry, clearHistory } = useCallHistory();
+    const { history, setFilter, addEntry, clearHistory } = useCallHistory();
 
     const [callFilter, setCallFilter] = useState<CallFilter>('all');
     const [phoneNumber, setPhoneNumber] = useState('');
@@ -79,8 +95,6 @@ export default function Home() {
         fetchInitialData();
     }, []);
 
-    const isOnCall = twilio.callStatus === 'connected' || twilio.callStatus === 'connecting' || twilio.callStatus === 'ringing';
-
     // Handle filter change
     const handleFilterChange = (newFilter: CallFilter) => {
         setCallFilter(newFilter);
@@ -98,10 +112,9 @@ export default function Home() {
 
     // Call Strategy / Mode: direct | script | ai_agent
     const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
-    const [selectedCampaign, setSelectedCampaign] = useState('Default AI Campaign');
+    const [selectedCampaign] = useState('Senior Sweepstakes Recovery');
     const [showAISimulator, setShowAISimulator] = useState(false);
-    const [aiCallNotice, setAiCallNotice] = useState<string | null>(null);
-    const [aiDialing, setAiDialing] = useState(false);
+    const [activeAiCall, setActiveAiCall] = useState<LiveSingleAiCall | null>(null);
 
     // Make Call
     const handleCall = async (numberToCallParam?: string) => {
@@ -113,9 +126,6 @@ export default function Home() {
         // If in AI Agent mode and calling a customer's phone number:
         if (callMode === 'ai_agent' && numberToCall !== '*99' && numberToCall !== '99') {
             try {
-                setAiDialing(true);
-                setAiCallNotice(`🤖 AI Voice Agent is dialing ${numberToCall}...`);
-
                 // Twilio identity is the user UUID used to register the softphone
                 const agentUserId = twilio.twilioIdentity
                     || (typeof window !== 'undefined' ? localStorage.getItem('twilio_identity') : null)
@@ -132,17 +142,22 @@ export default function Home() {
                 });
 
                 const data = await res.json();
-                if (data.success) {
-                    setAiCallNotice(`✅ AI Agent dialing ${numberToCall}! The AI will pitch the customer and ring your softphone when they're ready to talk!`);
+                if (data.success && data.callSid) {
+                    setActiveAiCall({
+                        callSid: data.callSid,
+                        number: numberToCall,
+                        status: 'ringing',
+                        duration: 0,
+                        turns: [],
+                        note: 'Ringing customer phone...',
+                    });
                     setPhoneNumber('');
                     addEntry(createCallHistoryEntry('outgoing', numberToCall, 0, 'completed'));
                 } else {
-                    setAiCallNotice(`❌ Error: ${data.error || 'Failed to start AI call'}`);
+                    alert(`Error starting AI call: ${data.error || 'Failed to initiate call'}`);
                 }
             } catch (err: any) {
-                setAiCallNotice(`❌ Error starting AI call: ${err.message}`);
-            } finally {
-                setAiDialing(false);
+                alert(`Error starting AI call: ${err.message}`);
             }
             return;
         }
@@ -157,6 +172,78 @@ export default function Home() {
             twilio.setActiveCall(call, 'outgoing', numberToCall);
             setPhoneNumber('');
         }
+    };
+
+    // Live Polling for Single AI Call
+    useEffect(() => {
+        if (!activeAiCall || !activeAiCall.callSid) return;
+        const isTerminal = ['completed', 'voicemail', 'no-answer', 'busy', 'failed', 'canceled'].includes(activeAiCall.status);
+        if (isTerminal) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/twilio/ai-call/status?callSid=${encodeURIComponent(activeAiCall.callSid)}`);
+                if (!res.ok) return;
+                const json = await res.json();
+                if (!json.success || !json.call) return;
+
+                const live = json.call;
+                let newStatus = activeAiCall.status;
+                let note = activeAiCall.note;
+
+                if (live.status === 'ringing') {
+                    newStatus = 'ringing';
+                    note = 'Customer phone is ringing...';
+                } else if (live.status === 'in-progress') {
+                    newStatus = live.transferredToSoftphone ? 'transferring' : 'in-progress';
+                    note = live.transferredToSoftphone
+                        ? '🔔 Transferring to your Softphone right now!'
+                        : (live.lastSpeech ? `Customer: "${live.lastSpeech}"` : 'AI is speaking with customer...');
+                } else if (live.status === 'voicemail') {
+                    newStatus = 'voicemail';
+                    note = '📼 Answering Machine / Voicemail Box Detected (Call ended)';
+                } else if (live.status === 'completed') {
+                    newStatus = activeAiCall.status === 'voicemail' ? 'voicemail' : 'completed';
+                    note = `Call finished (Duration: ${formatDuration(live.duration)})`;
+                } else if (live.status === 'busy') {
+                    newStatus = 'busy';
+                    note = 'Line Busy';
+                } else if (live.status === 'no-answer') {
+                    newStatus = 'no-answer';
+                    note = 'No Answer / Timed Out';
+                } else if (live.status === 'failed') {
+                    newStatus = 'failed';
+                    note = live.error || 'Call Failed';
+                } else if (live.status === 'canceled') {
+                    newStatus = 'canceled';
+                    note = 'Call Cancelled';
+                }
+
+                setActiveAiCall(prev => prev ? {
+                    ...prev,
+                    status: newStatus,
+                    duration: live.duration || prev.duration,
+                    turns: live.turns || prev.turns,
+                    note,
+                } : null);
+            } catch (e) {
+                console.warn('[Single AI Call Poller] Error:', e);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [activeAiCall]);
+
+    const handleCancelSingleAiCall = async () => {
+        if (!activeAiCall?.callSid) return;
+        try {
+            await fetch('/api/twilio/ai-call/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ callSid: activeAiCall.callSid }),
+            });
+            setActiveAiCall(prev => prev ? { ...prev, status: 'canceled', note: 'Cancelled by operator' } : null);
+        } catch {}
     };
 
     // Handle incoming call disconnect -> add to history
@@ -284,7 +371,7 @@ export default function Home() {
 
                 {/* Main 2-Column Dialer & Call Log Layout */}
                 <div className={styles.mainColumns}>
-                    {/* Left: Softphone Keypad */}
+                    {/* Left: Softphone Keypad & AI Dashboard */}
                     <div className={styles.leftColumn}>
                         <div className={styles.dialerContainer}>
                             <div className={styles.dialerHeader}>
@@ -295,7 +382,7 @@ export default function Home() {
                                     title="Auto Dialer Campaign"
                                 >
                                     <ListIcon />
-                                    <span>{showAutoDialer ? 'Close Campaign' : 'Auto Dialer'}</span>
+                                    <span>{showAutoDialer ? 'Close Campaign' : '🚀 Auto Dialer'}</span>
                                 </button>
                             </div>
 
@@ -327,8 +414,8 @@ export default function Home() {
                                     <div className={styles.aiBadgeHeader}>
                                         <div className={styles.aiPulseDot}></div>
                                         <div className={styles.aiBadgeText}>
-                                            <span className={styles.aiBadgeTitle}>AI Agent Armed (Replicate / Cerebras)</span>
-                                            <span className={styles.aiBadgeSub}>{selectedCampaign} — configured in Settings</span>
+                                            <span className={styles.aiBadgeTitle}>AI Agent Armed (Senior Sweepstakes Recovery)</span>
+                                            <span className={styles.aiBadgeSub}>{selectedCampaign} — 15 Objections & Warm Transfer</span>
                                         </div>
                                     </div>
                                     <div className={styles.aiActions}>
@@ -350,17 +437,68 @@ export default function Home() {
                                 </div>
                             )}
 
-                            {callMode === 'script' && (
-                                <div className={styles.scriptBadge}>
-                                    <span>🎙️ Intro announcement plays on answer, then bridges to you.</span>
-                                </div>
-                            )}
+                            {/* Live AI Single Call Monitor Card */}
+                            {activeAiCall && (
+                                <div className={styles.liveAiCallCard}>
+                                    <div className={styles.liveAiHeader}>
+                                        <span className={styles.liveAiTarget}>📞 {activeAiCall.number}</span>
+                                        
+                                        <span className={`${styles.liveAiStatusPill} ${
+                                            activeAiCall.status === 'ringing' ? styles.liveStatus_ringing :
+                                            activeAiCall.status === 'in-progress' ? styles.liveStatus_talking :
+                                            activeAiCall.status === 'voicemail' ? styles.liveStatus_voicemail :
+                                            activeAiCall.status === 'transferring' ? styles.liveStatus_transferring :
+                                            activeAiCall.status === 'completed' ? styles.liveStatus_completed :
+                                            styles.liveStatus_failed
+                                        }`}>
+                                            {activeAiCall.status === 'ringing' && '🟡 Ringing...'}
+                                            {activeAiCall.status === 'in-progress' && '🟢 In Conversation'}
+                                            {activeAiCall.status === 'voicemail' && '📼 Voicemail Box Detected'}
+                                            {activeAiCall.status === 'transferring' && '🔔 Transferring to Softphone!'}
+                                            {activeAiCall.status === 'completed' && '✅ Call Completed'}
+                                            {activeAiCall.status === 'busy' && '🔴 Line Busy'}
+                                            {activeAiCall.status === 'no-answer' && '⭕ No Answer'}
+                                            {activeAiCall.status === 'failed' && '❌ Failed'}
+                                            {activeAiCall.status === 'canceled' && '⏹ Cancelled'}
+                                        </span>
 
-                            {/* Live AI Call Notification Card */}
-                            {aiCallNotice && (
-                                <div className={styles.aiNoticeCard}>
-                                    <span>{aiCallNotice}</span>
-                                    <button onClick={() => setAiCallNotice(null)} className={styles.aiNoticeClose}>×</button>
+                                        {activeAiCall.duration > 0 && (
+                                            <span className={styles.liveAiTimer}>{formatDuration(activeAiCall.duration)}</span>
+                                        )}
+                                    </div>
+
+                                    {/* Streaming Transcript */}
+                                    <div className={styles.liveAiTranscript}>
+                                        {activeAiCall.turns && activeAiCall.turns.length > 0 ? (
+                                            activeAiCall.turns.map((turn, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className={`${styles.liveAiTurn} ${turn.role === 'user' ? styles.liveAiTurn_user : styles.liveAiTurn_assistant}`}
+                                                >
+                                                    <div className={styles.liveAiTurnRole}>
+                                                        {turn.role === 'user' ? '👤 Customer' : '🤖 AI Agent (Ashley)'}
+                                                    </div>
+                                                    <div>{turn.text}</div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className={styles.liveAiWaitingText}>
+                                                {activeAiCall.note || 'Dialing customer... AI will introduce the claim upon answer.'}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className={styles.liveAiFooter}>
+                                        {(activeAiCall.status === 'ringing' || activeAiCall.status === 'in-progress' || activeAiCall.status === 'transferring') ? (
+                                            <button className={styles.liveAiCancelBtn} onClick={handleCancelSingleAiCall}>
+                                                ⏹ End AI Call
+                                            </button>
+                                        ) : (
+                                            <button className={styles.liveAiDismissBtn} onClick={() => setActiveAiCall(null)}>
+                                                ✕ Dismiss
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -451,6 +589,7 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
             {/* AI Simulator Modal */}
             <AISimulatorModal
                 isOpen={showAISimulator}

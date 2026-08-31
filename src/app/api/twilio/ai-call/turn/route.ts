@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAIResponse, ChatMessage } from '@/lib/ai/llm';
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/ai/prompts';
+import { updateCall, addCallTurn } from '@/lib/ai/callStore';
+import { getPublicAppUrl } from '@/lib/url';
 
 function escapeXml(unsafe: string): string {
     return unsafe
@@ -18,9 +20,6 @@ function twimlResponse(twiml: string): NextResponse {
     });
 }
 
-// Builds a <Dial><Client> transfer verb that carries the lead's name and real
-// phone number as custom parameters, so the receiving softphone can show who
-// is calling instead of just the business caller ID.
 function buildTransferTwiml(opts: {
     sayVoice: string;
     sayText: string;
@@ -42,6 +41,25 @@ function buildTransferTwiml(opts: {
             </Dial>
         </Response>
     `;
+}
+
+// Check if speech indicates an answering machine / voicemail greeting
+function isVoicemailGreeting(speech: string): boolean {
+    const s = speech.toLowerCase();
+    return (
+        s.includes('leave a message') ||
+        s.includes('after the tone') ||
+        s.includes('at the tone') ||
+        s.includes('record your message') ||
+        s.includes('not available right now') ||
+        s.includes('cannot take your call') ||
+        s.includes('can not take your call') ||
+        s.includes('mailbox is full') ||
+        s.includes('please leave your name') ||
+        s.includes('leave your number') ||
+        s.includes('voicemail box') ||
+        s.includes('voice message')
+    );
 }
 
 // Extract params from either POST form data or GET query params
@@ -78,8 +96,6 @@ async function extractParams(request: NextRequest): Promise<Record<string, strin
     return params;
 }
 
-import { getPublicAppUrl } from '@/lib/url';
-
 export async function POST(request: NextRequest) {
     return handleTurn(request);
 }
@@ -91,16 +107,13 @@ export async function GET(request: NextRequest) {
 async function handleTurn(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request);
+        const callSid = params['CallSid'] || params['callSid'] || '';
         console.log('[AI Turn] Received turn params:', JSON.stringify(params));
 
-        // Customer's transcribed speech from Twilio Speech Recognition or Deepgram
         const speechResult = (params['SpeechResult'] || params['speech'] || params['Digits'] || '').trim();
         const agentUserId = params['agentUserId'] || params['userId'] || 'user';
         const callerId = params['callerId'] || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
         const leadName = params['leadName'] || '';
-        // Twilio always includes the standard call params (From/To) on every request
-        // within a call's lifecycle, including Gather action callbacks — 'To' here is
-        // the customer's real number since this leg was dialed out to them.
         const customerNumber = params['To'] || params['Called'] || callerId;
         const turnCount = parseInt(params['turnCount'] || '1', 10);
         const historyEncoded = params['history'] || '';
@@ -112,13 +125,30 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
             }
         } catch {}
 
-        // Base URL for callback
         const appUrl = await getPublicAppUrl(request);
 
-        // 1. If customer was silent or no speech was recognized
+        // 1. Check if customer speech is a Voicemail / Answering Machine Greeting
+        if (speechResult && isVoicemailGreeting(speechResult)) {
+            console.log(`[AI Turn] Answering machine detected in speech for ${callSid}: "${speechResult}"`);
+            if (callSid) {
+                updateCall(callSid, { status: 'voicemail', currentStage: 'voicemail', answeredBy: 'machine_start' });
+                addCallTurn(callSid, { role: 'user', text: `[Voicemail]: ${speechResult}`, timestamp: Date.now() }, 'voicemail');
+            }
+
+            return twimlResponse(`
+                <Response>
+                    <Say voice="Polly.Joanna" language="en-US">Hello, this is Consumer Award Resolution Bureau regarding claim file US-9482. Please call us back at ${escapeXml(callerId)}.</Say>
+                    <Hangup/>
+                </Response>
+            `);
+        }
+
+        // 2. If customer was silent or no speech recognized
         if (!speechResult) {
             if (turnCount >= 4) {
-                // Max silence turns reached, transfer to human agent
+                if (callSid) {
+                    updateCall(callSid, { transferredToSoftphone: true, currentStage: 'transferring' });
+                }
                 return twimlResponse(buildTransferTwiml({
                     sayVoice: 'Polly.Joanna',
                     sayText: 'Let me connect you directly with a member of our team right now.',
@@ -132,16 +162,23 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
             return twimlResponse(`
                 <Response>
                     <Gather input="speech dtmf" timeout="4" action="${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=${turnCount + 1}&amp;history=${encodeURIComponent(JSON.stringify(history))}">
-                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you able to continue, or would you like me to connect you with a team member?</Say>
+                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you able to hear me, or would you like me to connect you with a specialist?</Say>
                     </Gather>
                 </Response>
             `);
         }
 
-        // 2. Add customer message to history
+        // 3. Record customer turn in history and callStore
         history.push({ role: 'user', content: speechResult });
+        if (callSid) {
+            addCallTurn(callSid, {
+                role: 'user',
+                text: speechResult,
+                timestamp: Date.now(),
+            }, 'pitching');
+        }
 
-        // 3. Look up user's custom AI settings and API keys from Supabase
+        // 4. Look up user's custom AI settings and API keys from Supabase
         let systemPrompt = DEFAULT_SYSTEM_PROMPT;
         let aiVoice = 'Polly.Joanna';
         let userKeys: { cerebrasKey?: string; replicateToken?: string } = {};
@@ -167,17 +204,28 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
 
         const messages: ChatMessage[] = [
             { role: 'system', content: systemPrompt },
-            ...history.slice(-8) // keep last 8 turns for context window speed
+            ...history.slice(-8)
         ];
 
-        // 4. Generate AI reply via Multi-Provider Fallback Engine (Cerebras -> Replicate -> DeepSeek -> Rule)
+        // 5. Generate AI reply via Multi-Provider Fallback Engine (Cerebras -> Replicate -> DeepSeek -> Rule)
         const aiResponse = await generateAIResponse(messages, userKeys);
         console.log(`[AI Turn] AI generated response (via ${aiResponse.provider}):`, aiResponse.text, 'shouldTransfer:', aiResponse.shouldTransfer);
 
-        // Add assistant response to history
         history.push({ role: 'assistant', content: aiResponse.text });
+        
+        const stage = aiResponse.shouldTransfer ? 'transferring' : (turnCount >= 2 ? 'objection' : 'pitching');
+        if (callSid) {
+            addCallTurn(callSid, {
+                role: 'assistant',
+                text: aiResponse.text,
+                timestamp: Date.now(),
+            }, stage);
+            if (aiResponse.shouldTransfer) {
+                updateCall(callSid, { transferredToSoftphone: true, currentStage: 'transferring' });
+            }
+        }
 
-        // 5. If AI or customer triggered transfer to human agent
+        // 6. Transfer to softphone if triggered
         if (aiResponse.shouldTransfer || turnCount >= 6) {
             return twimlResponse(buildTransferTwiml({
                 sayVoice: aiVoice,
@@ -189,7 +237,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
             }));
         }
 
-        // 6. Otherwise, speak the response and gather the customer's next reply
+        // 7. Otherwise speak and gather next speech
         const nextTurn = turnCount + 1;
         const nextActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=${nextTurn}&amp;history=${encodeURIComponent(JSON.stringify(history))}`;
 

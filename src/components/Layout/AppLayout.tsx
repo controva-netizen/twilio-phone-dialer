@@ -1,6 +1,7 @@
 'use client';
 
 import React, { ReactNode, useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { GlobalDialerFAB } from './GlobalDialerFAB';
@@ -15,7 +16,6 @@ interface AppLayoutProps {
     onAccessibilityClick?: () => void;
     callFilter?: CallFilter;
     onCallFilterChange?: (filter: CallFilter) => void;
-    // These are now optional — falls back to context
     deviceStatus?: 'offline' | 'connecting' | 'ready' | 'busy' | 'error';
     error?: string | null;
     user?: { email?: string | null };
@@ -23,6 +23,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFilterChange, deviceStatus: propDeviceStatus, error: propError, user }: AppLayoutProps) {
     const twilio = useTwilio();
+    const pathname = usePathname();
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     // Use props if provided, otherwise fall back to context
@@ -32,10 +33,13 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
     const isOnCall = twilio.callStatus === 'connected' || twilio.callStatus === 'connecting' || twilio.callStatus === 'ringing';
     const displayNumber = twilio.remoteNumber || 'Unknown';
 
+    // Is current route the main dialer page? If yes, don't show the duplicate floating dialer FAB
+    const isMainDialerPage = pathname === '/' || pathname === '/calls';
+
     // Close sidebar on route change (mobile UX)
     useEffect(() => {
         setSidebarOpen(false);
-    }, []);
+    }, [pathname]);
 
     // Prevent body scroll when sidebar is open on mobile
     useEffect(() => {
@@ -89,7 +93,7 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                     />
                 )}
 
-                {/* Global Active Call Popup */}
+                {/* Global Active Call Popup - Single unified active call HUD */}
                 {isOnCall && (
                     <ActiveCallPopup
                         remoteNumber={displayNumber}
@@ -106,8 +110,8 @@ export function AppLayout({ children, onAccessibilityClick, callFilter, onCallFi
                     {children}
                 </main>
                 
-                {/* Global FAB Dialer */}
-                <GlobalDialerFAB />
+                {/* Global FAB Dialer: Only shown on auxiliary pages like /settings or /recordings */}
+                {!isMainDialerPage && <GlobalDialerFAB />}
             </div>
         </div>
     );

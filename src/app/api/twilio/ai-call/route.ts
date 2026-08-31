@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateInitialGreeting, DEFAULT_AI_CONFIG } from '@/lib/ai/prompts';
+import { updateCall, addCallTurn } from '@/lib/ai/callStore';
+import { getPublicAppUrl } from '@/lib/url';
 
 function escapeXml(unsafe: string): string {
     return unsafe
@@ -51,8 +53,6 @@ async function extractParams(request: NextRequest): Promise<Record<string, strin
     return params;
 }
 
-import { getPublicAppUrl } from '@/lib/url';
-
 export async function POST(request: NextRequest) {
     return handleEntry(request);
 }
@@ -64,17 +64,29 @@ export async function GET(request: NextRequest) {
 async function handleEntry(request: NextRequest): Promise<NextResponse> {
     try {
         const params = await extractParams(request);
+        const callSid = params['CallSid'] || params['callSid'] || '';
+        const answeredBy = (params['AnsweredBy'] || '').toLowerCase();
         console.log('[AI Entry] Initiating AI call with params:', JSON.stringify(params));
 
         const from = params['From'] || '';
-        // agentUserId is the Twilio Client identity (Supabase user UUID) that the transfer
-        // will dial into. It's passed as a query param on the webhook URL we built in
-        // /api/twilio/ai-call/start — must be read as 'agentUserId', not 'userId'.
         const agentUserId = from.startsWith('client:')
             ? from.replace('client:', '')
             : (params['agentUserId'] || params['userId'] || 'user');
         const callerId = params['callerId'] || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
         const leadName = params['leadName'] || '';
+
+        // If Twilio AMD already signaled voicemail on connect
+        if (answeredBy.startsWith('machine') || answeredBy === 'fax') {
+            if (callSid) {
+                updateCall(callSid, { status: 'voicemail', currentStage: 'voicemail', answeredBy: answeredBy as any });
+            }
+            return twimlResponse(`
+                <Response>
+                    <Say voice="Polly.Joanna" language="en-US">Hello, this is the Consumer Award Resolution Bureau regarding claim file US-9482. Please call us back at ${escapeXml(callerId)}.</Say>
+                    <Hangup/>
+                </Response>
+            `);
+        }
 
         // Base URL for callback
         const appUrl = await getPublicAppUrl(request);
@@ -104,6 +116,20 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
         // Personalize the greeting with the lead's name when we have one
         if (leadName) {
             greeting = `Hi, is this ${leadName}? ${greeting}`;
+        }
+
+        // Update live call store with status and initial greeting turn
+        if (callSid) {
+            updateCall(callSid, {
+                status: 'in-progress',
+                currentStage: 'greeting',
+                leadName: leadName || undefined,
+            });
+            addCallTurn(callSid, {
+                role: 'assistant',
+                text: greeting,
+                timestamp: Date.now(),
+            }, 'greeting');
         }
 
         const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=1`;

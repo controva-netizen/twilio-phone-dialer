@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
 import { createClient } from '@/lib/supabase/server';
 import { getPublicAppUrl } from '@/lib/url';
+import { registerCall } from '@/lib/ai/callStore';
 
 function formatE164(phone: string): string {
     const clean = phone.replace(/[^0-9+]/g, '');
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
         const to = body.to || body.phoneNumber || '';
         const requestedCallerId = body.callerId || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444';
         const leadName = (body.leadName || body.name || '').toString().trim();
+        const leadId = body.leadId || '';
 
         if (!to) {
             return NextResponse.json({ error: 'Destination phone number is required' }, { status: 400 });
@@ -27,7 +29,6 @@ export async function POST(request: NextRequest) {
         const cleanCallerId = formatE164(requestedCallerId);
 
         // agentUserId: prefer what the frontend sends (it's the Twilio client identity = Supabase user.id)
-        // Only fall back to server-side Supabase lookup if not provided
         let userId = body.agentUserId || '';
         if (!userId) {
             try {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
         const client = twilio(apiKey, apiSecret, { accountSid });
         const appUrl = await getPublicAppUrl(request);
 
-        const aiWebhookUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(cleanCallerId)}&leadName=${encodeURIComponent(leadName)}`;
+        const aiWebhookUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId)}&callerId=${encodeURIComponent(cleanCallerId)}&leadName=${encodeURIComponent(leadName)}&leadId=${encodeURIComponent(leadId)}`;
 
         console.log(`[AI Call Start] Dialing customer ${cleanTo} from ${cleanCallerId} with webhook: ${aiWebhookUrl}`);
 
@@ -59,8 +60,22 @@ export async function POST(request: NextRequest) {
             to: cleanTo,
             from: cleanCallerId,
             url: aiWebhookUrl,
-            statusCallback: `${appUrl}/api/twilio/recording-status?user_id=${userId}`,
+            machineDetection: 'Enable',
+            machineDetectionTimeout: 20,
+            asyncAmd: 'true',
+            asyncAmdStatusCallback: `${appUrl}/api/twilio/ai-call/status?agentUserId=${encodeURIComponent(userId)}&type=amd`,
+            statusCallback: `${appUrl}/api/twilio/ai-call/status?agentUserId=${encodeURIComponent(userId)}&leadName=${encodeURIComponent(leadName)}&leadId=${encodeURIComponent(leadId)}`,
             statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+        });
+
+        // Register in live telemetry store
+        registerCall({
+            callSid: call.sid,
+            agentUserId: userId,
+            to: cleanTo,
+            from: cleanCallerId,
+            leadName,
+            leadId,
         });
 
         return NextResponse.json({
@@ -68,7 +83,8 @@ export async function POST(request: NextRequest) {
             callSid: call.sid,
             status: call.status,
             to: cleanTo,
-            message: `AI Voice Agent is dialing ${cleanTo}. When answered, AI will speak and transfer to you on qualification.`,
+            leadName,
+            message: `AI Voice Agent is dialing ${cleanTo}.`,
         });
     } catch (error: any) {
         console.error('[AI Call Start] Error initiating AI call:', error);

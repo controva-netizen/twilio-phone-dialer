@@ -37,13 +37,6 @@ export function GlobalDialerFAB() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [twilio.callStatus]);
 
-    // Open automatically on incoming/active call
-    useEffect(() => {
-        if (twilio.callStatus === 'connected' || twilio.callStatus === 'ringing' || twilio.incomingCall) {
-            setIsOpen(true);
-        }
-    }, [twilio.callStatus, twilio.incomingCall]);
-
     const playDTMF = (digit: string) => {
         try {
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();

@@ -17,42 +17,103 @@ function createSupabaseAdmin() {
     )
 }
 
+async function extractParams(request: NextRequest): Promise<Record<string, string>> {
+    const params: Record<string, string> = {}
+    request.nextUrl.searchParams.forEach((value, key) => {
+        params[key] = value
+    })
+
+    try {
+        const contentType = request.headers.get('content-type') || ''
+        if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+            const formData = await request.formData()
+            formData.forEach((value, key) => {
+                params[key] = value.toString()
+            })
+        } else if (contentType.includes('application/json')) {
+            const json = await request.json()
+            Object.entries(json).forEach(([k, v]) => {
+                if (v !== undefined && v !== null) params[k] = String(v)
+            })
+        } else {
+            const rawText = await request.text()
+            const searchParams = new URLSearchParams(rawText)
+            searchParams.forEach((value, key) => {
+                params[key] = value
+            })
+        }
+    } catch (e) {
+        console.error('[Recording Status] Param extraction error:', e)
+    }
+
+    return params
+}
+
 export async function POST(request: NextRequest) {
     try {
-        const url = new URL(request.url)
-        const userId = url.searchParams.get('user_id')
+        const params = await extractParams(request)
+        const userId = params['user_id'] || params['userId'] || ''
+        const recordingUrl = params['RecordingUrl'] || ''
+        const recordingSid = params['RecordingSid'] || ''
+        const recordingDuration = params['RecordingDuration'] || '0'
+        const callSid = params['CallSid'] || ''
+        const recordingStatus = (params['RecordingStatus'] || '').toLowerCase()
+        const from = params['From'] || ''
+        const to = params['To'] || ''
 
-        // Cast needed: @types/node's global FormData shadows the DOM's and lacks get()
-        const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
-        const recordingUrl = formData['RecordingUrl'] || null
-        const recordingSid = formData['RecordingSid'] || null
-        const recordingDuration = formData['RecordingDuration'] || null
-        const callSid = formData['CallSid'] || null
-        const recordingStatus = formData['RecordingStatus'] || null
+        console.log(`[Recording Status Webhook] userId: ${userId}, status: ${recordingStatus}, sid: ${recordingSid}, duration: ${recordingDuration}s, url: ${recordingUrl}`)
 
-        console.log(`[Recording Status] userId: ${userId}, status: ${recordingStatus}, sid: ${recordingSid}, duration: ${recordingDuration}s`)
-
-        if (!userId || !recordingUrl || recordingStatus !== 'completed') {
+        if (!recordingUrl || (recordingStatus && recordingStatus !== 'completed')) {
             return NextResponse.json({ ok: true })
         }
 
         const supabase = createSupabaseAdmin()
 
+        // Resolve userId if not passed in query params
+        let targetUserId = userId
+        if (!targetUserId || targetUserId === 'user') {
+            const { data: anyNumber } = await supabase
+                .from('user_phone_numbers')
+                .select('user_id')
+                .limit(1)
+                .single()
+            if (anyNumber?.user_id) targetUserId = anyNumber.user_id
+        }
+
+        if (!targetUserId) {
+            console.warn('[Recording Status] No userId found, cannot save recording')
+            return NextResponse.json({ ok: true })
+        }
+
         // Look up the user's phone number for context
         const { data: numberData } = await supabase
             .from('user_phone_numbers')
             .select('phone_number')
-            .eq('user_id', userId)
-            .eq('is_default', true)
+            .eq('user_id', targetUserId)
             .limit(1)
             .single()
+
+        // Check if this recording already exists in DB
+        const { data: existing } = await supabase
+            .from('call_recordings')
+            .select('id')
+            .eq('recording_sid', recordingSid)
+            .limit(1)
+            .single()
+
+        if (existing) {
+            console.log(`[Recording Status] Recording ${recordingSid} already exists in DB`)
+            return NextResponse.json({ ok: true })
+        }
+
+        const callerNumber = from || to || numberData?.phone_number || ''
 
         const { error } = await supabase
             .from('call_recordings')
             .insert({
-                user_id: userId,
-                phone_number: numberData?.phone_number || '',
-                caller_number: '', // We don't have this from the recording callback
+                user_id: targetUserId,
+                phone_number: numberData?.phone_number || to || '',
+                caller_number: callerNumber,
                 recording_url: recordingUrl,
                 recording_sid: recordingSid || '',
                 call_sid: callSid || '',
@@ -62,14 +123,14 @@ export async function POST(request: NextRequest) {
             })
 
         if (error) {
-            console.error('[Recording Status] Failed to save recording:', error)
+            console.error('[Recording Status] Failed to save recording to DB:', error)
         } else {
-            console.log(`[Recording Status] Saved call recording ${recordingSid} for user ${userId}`)
+            console.log(`[Recording Status] Successfully saved call recording ${recordingSid} for user ${targetUserId}`)
         }
 
         return NextResponse.json({ ok: true })
     } catch (error) {
-        console.error('[Recording Status] Error:', error)
+        console.error('[Recording Status] Error handling callback:', error)
         return NextResponse.json({ ok: true })
     }
 }

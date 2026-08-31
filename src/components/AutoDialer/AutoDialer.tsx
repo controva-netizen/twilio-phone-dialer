@@ -5,9 +5,15 @@ import * as XLSX from 'xlsx';
 import { useTwilio } from '@/contexts/TwilioContext';
 import styles from './AutoDialer.module.css';
 
-type DialStatus = 'pending' | 'queued' | 'dialing' | 'connected' | 'completed' | 'no-answer' | 'failed' | 'cancelled' | 'skipped';
+type DialStatus = 'pending' | 'queued' | 'dialing' | 'connected' | 'voicemail' | 'transferring' | 'completed' | 'no-answer' | 'busy' | 'failed' | 'cancelled' | 'skipped';
 type RunState = 'idle' | 'running' | 'paused' | 'done';
 type AutoDialMode = 'direct' | 'ai_agent';
+
+interface TurnMessage {
+    role: 'user' | 'assistant' | 'system';
+    text: string;
+    timestamp: number;
+}
 
 interface DialEntry {
     id: string;
@@ -17,6 +23,10 @@ interface DialEntry {
     callSid?: string;
     duration?: number;
     note?: string;
+    lastSpeech?: string;
+    lastAiReply?: string;
+    stage?: string;
+    turns?: TurnMessage[];
 }
 
 interface CampaignStats {
@@ -24,8 +34,11 @@ interface CampaignStats {
     queued: number;
     dialing: number;
     connected: number;
+    voicemail: number;
+    transferring: number;
     completed: number;
     noAnswer: number;
+    busy: number;
     failed: number;
     cancelled: number;
     skipped: number;
@@ -40,6 +53,13 @@ function cleanPhoneNumber(raw: string): string {
     return '';
 }
 
+function formatDuration(seconds?: number): string {
+    if (!seconds || seconds <= 0) return '00:00';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 export function AutoDialer() {
     const twilio = useTwilio();
     const [entries, setEntries] = useState<DialEntry[]>([]);
@@ -48,18 +68,19 @@ export function AutoDialer() {
     const [concurrencyLimit, setConcurrencyLimit] = useState(1);
     const [delaySeconds, setDelaySeconds] = useState(3);
     const [fileName, setFileName] = useState('');
-    const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
+    const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
     const runStateRef = useRef<RunState>('idle');
     const entriesRef = useRef<DialEntry[]>([]);
     const twilioRef = useRef(twilio);
-    const activeCallsRef = useRef<Set<string>>(new Set()); // track entry IDs currently active
+    const activeCallsRef = useRef<Set<string>>(new Set()); // track entry IDs currently dialing/active
     const queueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Track current softphone call status for direct mode
     const prevCallStatusRef = useRef(twilio.callStatus);
-    const directActiveEntryRef = useRef<string | null>(null);
+    const directActiveEntryIdRef = useRef<string | null>(null);
 
     runStateRef.current = runState;
     entriesRef.current = entries;
@@ -71,13 +92,16 @@ export function AutoDialer() {
         queued: entries.filter(e => e.status === 'queued').length,
         dialing: entries.filter(e => e.status === 'dialing').length,
         connected: entries.filter(e => e.status === 'connected').length,
+        voicemail: entries.filter(e => e.status === 'voicemail').length,
+        transferring: entries.filter(e => e.status === 'transferring').length,
         completed: entries.filter(e => e.status === 'completed').length,
         noAnswer: entries.filter(e => e.status === 'no-answer').length,
+        busy: entries.filter(e => e.status === 'busy').length,
         failed: entries.filter(e => e.status === 'failed').length,
         cancelled: entries.filter(e => e.status === 'cancelled').length,
         skipped: entries.filter(e => e.status === 'skipped').length,
     };
-    const totalProcessed = stats.completed + stats.noAnswer + stats.failed + stats.cancelled + stats.skipped;
+    const totalProcessed = stats.completed + stats.voicemail + stats.noAnswer + stats.busy + stats.failed + stats.cancelled + stats.skipped;
     const progressPct = entries.length > 0 ? Math.round((totalProcessed / entries.length) * 100) : 0;
 
     // ── File Parsing ────────────────────────────────────────────────────────────
@@ -150,6 +174,7 @@ export function AutoDialer() {
             setEntries(parsedLeads);
             setRunState('idle');
             activeCallsRef.current.clear();
+            setSelectedEntryId(parsedLeads[0]?.id || null);
         } catch (err: any) {
             alert(`Error reading file: ${err.message || 'Unable to parse spreadsheet'}`);
         }
@@ -162,7 +187,7 @@ export function AutoDialer() {
         if (!entry) return;
 
         // Mark as dialing
-        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: 'dialing', callSid: undefined } : e));
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: 'dialing', note: 'Dialing customer...' } : e));
         activeCallsRef.current.add(entryId);
 
         if (dialMode === 'ai_agent') {
@@ -174,50 +199,50 @@ export function AutoDialer() {
                 const res = await fetch('/api/twilio/ai-call/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to: entry.number, agentUserId, leadName: entry.name || '' }),
+                    body: JSON.stringify({
+                        to: entry.number,
+                        agentUserId,
+                        leadName: entry.name || '',
+                        leadId: entry.id,
+                    }),
                 });
                 const data = await res.json();
 
-                if (data.success) {
-                    // Store CallSid for individual cancel
+                if (data.success && data.callSid) {
                     setEntries(prev => prev.map(e =>
-                        e.id === entryId ? { ...e, status: 'connected', callSid: data.callSid } : e
+                        e.id === entryId
+                            ? { ...e, status: 'dialing', callSid: data.callSid, note: 'Ringing customer phone...' }
+                            : e
                     ));
-                    // AI calls auto-advance after delaySeconds (cloud-managed)
-                    queueTimerRef.current = setTimeout(() => {
-                        activeCallsRef.current.delete(entryId);
-                        setEntries(prev => prev.map(e =>
-                            e.id === entryId && (e.status === 'connected' || e.status === 'dialing')
-                                ? { ...e, status: 'completed' }
-                                : e
-                        ));
-                        if (runStateRef.current === 'running') fillQueue();
-                    }, delaySeconds * 1000);
                 } else {
                     activeCallsRef.current.delete(entryId);
                     setEntries(prev => prev.map(e =>
-                        e.id === entryId ? { ...e, status: 'failed', note: data.error } : e
+                        e.id === entryId ? { ...e, status: 'failed', note: data.error || 'Failed to initiate call' } : e
                     ));
-                    if (runStateRef.current === 'running') fillQueue();
+                    if (runStateRef.current === 'running') {
+                        setTimeout(() => fillQueue(), delaySeconds * 1000);
+                    }
                 }
             } catch (err: any) {
                 activeCallsRef.current.delete(entryId);
                 setEntries(prev => prev.map(e =>
                     e.id === entryId ? { ...e, status: 'failed', note: err.message } : e
                 ));
-                if (runStateRef.current === 'running') fillQueue();
+                if (runStateRef.current === 'running') {
+                    setTimeout(() => fillQueue(), delaySeconds * 1000);
+                }
             }
         } else {
             // Direct softphone mode
-            directActiveEntryRef.current = entryId;
+            directActiveEntryIdRef.current = entryId;
             const call = await twilioRef.current.makeCall(entry.number);
             if (call) {
                 twilioRef.current.setActiveCall(call, 'outgoing', entry.number);
             } else {
                 activeCallsRef.current.delete(entryId);
-                directActiveEntryRef.current = null;
+                directActiveEntryIdRef.current = null;
                 setEntries(prev => prev.map(e =>
-                    e.id === entryId ? { ...e, status: 'failed' } : e
+                    e.id === entryId ? { ...e, status: 'failed', note: 'Softphone unavailable' } : e
                 ));
                 if (runStateRef.current === 'running') fillQueue();
             }
@@ -237,10 +262,8 @@ export function AutoDialer() {
 
         const pendingEntries = all.filter(e => e.status === 'pending');
 
-        // Mark next batch as queued
         const toQueue = pendingEntries.slice(0, availableSlots);
         if (toQueue.length === 0) {
-            // No more pending — check if we're done
             if (active.size === 0) {
                 setRunState('done');
             }
@@ -253,37 +276,138 @@ export function AutoDialer() {
         }
     }, [dialMode, concurrencyLimit, dialEntry]);
 
+    // ── Real-Time Status Polling for AI Calls ─────────────────────────────────
+    useEffect(() => {
+        if (dialMode !== 'ai_agent') return;
+
+        const pollActiveCalls = async () => {
+            const currentEntries = entriesRef.current;
+            const activeEntries = currentEntries.filter(
+                e => (e.status === 'dialing' || e.status === 'connected' || e.status === 'transferring') && e.callSid
+            );
+
+            if (!activeEntries.length) return;
+
+            const sidList = activeEntries.map(e => e.callSid!).join(',');
+            try {
+                const res = await fetch(`/api/twilio/ai-call/status?callSids=${encodeURIComponent(sidList)}`);
+                if (!res.ok) return;
+                const json = await res.json();
+                if (!json.success || !json.calls) return;
+
+                const liveCallsMap = json.calls as Record<string, any>;
+                let slotFreed = false;
+
+                setEntries(prev => prev.map(entry => {
+                    if (!entry.callSid || !liveCallsMap[entry.callSid]) return entry;
+                    const live = liveCallsMap[entry.callSid];
+
+                    let newStatus = entry.status;
+                    let note = entry.note;
+
+                    if (live.status === 'ringing') {
+                        newStatus = 'dialing';
+                        note = 'Ringing customer phone...';
+                    } else if (live.status === 'in-progress') {
+                        newStatus = live.transferredToSoftphone ? 'transferring' : 'connected';
+                        if (live.transferredToSoftphone) {
+                            note = '🔔 Transferring to your softphone!';
+                        } else if (live.lastSpeech) {
+                            note = `Customer: "${live.lastSpeech}"`;
+                        } else {
+                            note = 'AI is speaking to customer...';
+                        }
+                    } else if (live.status === 'voicemail') {
+                        newStatus = 'voicemail';
+                        note = '📼 Answering Machine / Voicemail Box Detected';
+                    } else if (live.status === 'completed') {
+                        newStatus = entry.status === 'voicemail' ? 'voicemail' : 'completed';
+                        note = `Finished (Duration: ${formatDuration(live.duration)})`;
+                    } else if (live.status === 'busy') {
+                        newStatus = 'busy';
+                        note = 'Line Busy';
+                    } else if (live.status === 'no-answer') {
+                        newStatus = 'no-answer';
+                        note = 'No Answer / Ring Timed Out';
+                    } else if (live.status === 'failed') {
+                        newStatus = 'failed';
+                        note = live.error || 'Call Failed';
+                    } else if (live.status === 'canceled' || live.status === 'cancelled') {
+                        newStatus = 'cancelled';
+                        note = 'Call Cancelled';
+                    }
+
+                    // Check if call reached a terminal state
+                    const isTerminal = ['completed', 'voicemail', 'no-answer', 'busy', 'failed', 'cancelled'].includes(newStatus);
+                    if (isTerminal && activeCallsRef.current.has(entry.id)) {
+                        activeCallsRef.current.delete(entry.id);
+                        slotFreed = true;
+                    }
+
+                    return {
+                        ...entry,
+                        status: newStatus,
+                        duration: live.duration || entry.duration,
+                        note,
+                        lastSpeech: live.lastSpeech || entry.lastSpeech,
+                        lastAiReply: live.lastAiReply || entry.lastAiReply,
+                        stage: live.currentStage || entry.stage,
+                        turns: live.turns || entry.turns,
+                    };
+                }));
+
+                // If any slot was freed and campaign is running, schedule next batch
+                if (slotFreed && runStateRef.current === 'running') {
+                    if (queueTimerRef.current) clearTimeout(queueTimerRef.current);
+                    queueTimerRef.current = setTimeout(() => {
+                        fillQueue();
+                    }, delaySeconds * 1000);
+                }
+            } catch (err) {
+                console.warn('[AutoDialer Poller] Error checking status:', err);
+            }
+        };
+
+        pollTimerRef.current = setInterval(pollActiveCalls, 1200);
+        return () => {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        };
+    }, [dialMode, delaySeconds, fillQueue]);
+
     // ── Watch direct softphone call status changes ────────────────────────────
     useEffect(() => {
         if (dialMode !== 'direct') return;
         const prev = prevCallStatusRef.current;
         prevCallStatusRef.current = twilio.callStatus;
 
-        const activeEntryId = directActiveEntryRef.current;
+        const activeEntryId = directActiveEntryIdRef.current;
         if (!activeEntryId) return;
 
         if (twilio.callStatus === 'connected') {
             setEntries(p => p.map(e =>
-                e.id === activeEntryId ? { ...e, status: 'connected' } : e
+                e.id === activeEntryId ? { ...e, status: 'connected', note: 'Talking on Softphone' } : e
             ));
         }
 
         if (twilio.callStatus === 'idle' && prev !== 'idle') {
             const wasConnected = prev === 'connected';
             activeCallsRef.current.delete(activeEntryId);
-            directActiveEntryRef.current = null;
+            directActiveEntryIdRef.current = null;
             setEntries(p => p.map(e =>
-                e.id === activeEntryId ? { ...e, status: wasConnected ? 'completed' : 'no-answer' } : e
+                e.id === activeEntryId
+                    ? { ...e, status: wasConnected ? 'completed' : 'no-answer', duration: twilio.duration, note: wasConnected ? 'Completed' : 'No Answer' }
+                    : e
             ));
             if (runStateRef.current === 'running') {
                 setTimeout(() => fillQueue(), delaySeconds * 1000);
             }
         }
-    }, [twilio.callStatus, dialMode, delaySeconds, fillQueue]);
+    }, [twilio.callStatus, twilio.duration, dialMode, delaySeconds, fillQueue]);
 
     // Cleanup on unmount
     useEffect(() => () => {
         if (queueTimerRef.current) clearTimeout(queueTimerRef.current);
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     }, []);
 
     // ── Campaign Actions ──────────────────────────────────────────────────────
@@ -307,9 +431,8 @@ export function AutoDialer() {
         setRunState('idle');
         if (queueTimerRef.current) clearTimeout(queueTimerRef.current);
 
-        // Cancel all active Twilio calls
         const activeEntries = entriesRef.current.filter(
-            e => (e.status === 'dialing' || e.status === 'connected') && e.callSid
+            e => (e.status === 'dialing' || e.status === 'connected' || e.status === 'transferring') && e.callSid
         );
 
         for (const entry of activeEntries) {
@@ -322,25 +445,24 @@ export function AutoDialer() {
             } catch {}
         }
 
-        // Hang up softphone if direct mode
         if (dialMode === 'direct') {
             twilioRef.current.hangup();
         }
 
         activeCallsRef.current.clear();
-        directActiveEntryRef.current = null;
+        directActiveEntryIdRef.current = null;
 
         setEntries(prev => prev.map(e =>
-            (e.status === 'dialing' || e.status === 'connected' || e.status === 'queued')
-                ? { ...e, status: 'cancelled', callSid: undefined }
+            (e.status === 'dialing' || e.status === 'connected' || e.status === 'queued' || e.status === 'transferring')
+                ? { ...e, status: 'cancelled', note: 'Cancelled by operator' }
                 : e
         ));
     };
 
     const handleRetryFailed = () => {
         setEntries(prev => prev.map(e =>
-            (e.status === 'failed' || e.status === 'no-answer' || e.status === 'cancelled')
-                ? { ...e, status: 'pending', callSid: undefined, note: undefined }
+            (e.status === 'failed' || e.status === 'no-answer' || e.status === 'busy' || e.status === 'cancelled' || e.status === 'voicemail')
+                ? { ...e, status: 'pending', callSid: undefined, note: undefined, turns: undefined }
                 : e
         ));
         setRunState('running');
@@ -348,20 +470,13 @@ export function AutoDialer() {
     };
 
     const handleClear = () => {
-        if (queueTimerRef.current) clearTimeout(queueTimerRef.current);
-        activeCallsRef.current.clear();
-        directActiveEntryRef.current = null;
-        twilioRef.current.hangup();
+        handleStopAll();
         setEntries([]);
         setFileName('');
-        setRunState('idle');
+        setSelectedEntryId(null);
     };
 
-    // ── Per-lead Actions ──────────────────────────────────────────────────────
-    const handleCancelLead = async (entryId: string) => {
-        const entry = entriesRef.current.find(e => e.id === entryId);
-        if (!entry) return;
-
+    const handleCancelEntry = async (entry: DialEntry) => {
         if (entry.callSid) {
             try {
                 await fetch('/api/twilio/ai-call/cancel', {
@@ -371,258 +486,302 @@ export function AutoDialer() {
                 });
             } catch {}
         }
-
-        if (dialMode === 'direct' && directActiveEntryRef.current === entryId) {
-            twilioRef.current.hangup();
-            directActiveEntryRef.current = null;
-        }
-
-        activeCallsRef.current.delete(entryId);
-        setEntries(prev => prev.map(e =>
-            e.id === entryId ? { ...e, status: 'cancelled', callSid: undefined } : e
-        ));
-
+        activeCallsRef.current.delete(entry.id);
+        setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, status: 'cancelled', note: 'Cancelled manually' } : e));
         if (runStateRef.current === 'running') fillQueue();
     };
 
-    const handleSkipLead = (entryId: string) => {
-        setEntries(prev => prev.map(e =>
-            e.id === entryId && e.status === 'pending' ? { ...e, status: 'skipped' } : e
-        ));
+    const handleSkipEntry = (id: string) => {
+        setEntries(prev => prev.map(e => e.id === id ? { ...e, status: 'skipped', note: 'Skipped' } : e));
     };
 
-    const handleRetryLead = (entryId: string) => {
-        setEntries(prev => prev.map(e =>
-            e.id === entryId ? { ...e, status: 'pending', callSid: undefined, note: undefined } : e
-        ));
-    };
-
-    const isReady = twilio.deviceStatus === 'ready';
-    const hasActiveOrQueued = entries.some(e => ['dialing', 'connected', 'queued'].includes(e.status));
-    const hasFailedOrNoAnswer = entries.some(e => ['failed', 'no-answer', 'cancelled'].includes(e.status));
+    const selectedEntry = entries.find(e => e.id === selectedEntryId);
 
     return (
         <div className={styles.container}>
             {/* ── Header ── */}
             <div className={styles.header}>
                 <div className={styles.headerTitleRow}>
-                    <span className={styles.title}>🚀 Campaign Dialer</span>
-                    {fileName && <span className={styles.fileBadge}>📄 {fileName}</span>}
+                    <span className={styles.title}>🚀 AUTO DIALER CAMPAIGN</span>
+                    {fileName && <span className={styles.fileBadge} title={fileName}>📄 {fileName}</span>}
                 </div>
                 {entries.length > 0 && (
-                    <span className={styles.progress}>{totalProcessed} / {entries.length}</span>
+                    <span className={styles.progress}>
+                        {totalProcessed} / {entries.length} ({progressPct}%)
+                    </span>
                 )}
             </div>
 
             {/* ── Stats Bar ── */}
             {entries.length > 0 && (
-                <div className={styles.statsBar}>
-                    <StatPill label="Pending" count={stats.pending} color="muted" />
-                    <StatPill label="Dialing" count={stats.dialing} color="warning" pulse />
-                    <StatPill label="Live / AI" count={stats.connected} color="primary" pulse />
-                    <StatPill label="Done" count={stats.completed} color="success" />
-                    <StatPill label="No Answer" count={stats.noAnswer} color="muted" />
-                    <StatPill label="Failed" count={stats.failed} color="danger" />
-                    <StatPill label="Cancelled" count={stats.cancelled} color="muted" />
-                </div>
+                <>
+                    <div className={styles.statsBar}>
+                        <div className={`${styles.statPill} ${styles.statPill_muted}`}>
+                            <span className={styles.statCount}>{stats.pending}</span>
+                            <span className={styles.statLabel}>Pending</span>
+                        </div>
+                        {stats.dialing > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_warning} ${styles.statPillPulse}`}>
+                                <span className={styles.statCount}>{stats.dialing}</span>
+                                <span className={styles.statLabel}>🟡 Ringing</span>
+                            </div>
+                        )}
+                        {stats.connected > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_primary} ${styles.statPillPulse}`}>
+                                <span className={styles.statCount}>{stats.connected}</span>
+                                <span className={styles.statLabel}>🟢 AI Talking</span>
+                            </div>
+                        )}
+                        {stats.voicemail > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_voicemail}`}>
+                                <span className={styles.statCount}>{stats.voicemail}</span>
+                                <span className={styles.statLabel}>📼 Voicemail</span>
+                            </div>
+                        )}
+                        {stats.transferring > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_primary} ${styles.statPillPulse}`}>
+                                <span className={styles.statCount}>{stats.transferring}</span>
+                                <span className={styles.statLabel}>🔔 Transferring</span>
+                            </div>
+                        )}
+                        <div className={`${styles.statPill} ${styles.statPill_success}`}>
+                            <span className={styles.statCount}>{stats.completed}</span>
+                            <span className={styles.statLabel}>Completed</span>
+                        </div>
+                        {(stats.noAnswer + stats.busy) > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_muted}`}>
+                                <span className={styles.statCount}>{stats.noAnswer + stats.busy}</span>
+                                <span className={styles.statLabel}>No Answer</span>
+                            </div>
+                        )}
+                        {stats.failed > 0 && (
+                            <div className={`${styles.statPill} ${styles.statPill_danger}`}>
+                                <span className={styles.statCount}>{stats.failed}</span>
+                                <span className={styles.statLabel}>Failed</span>
+                            </div>
+                        )}
+                    </div>
+                    <div className={styles.progressBarWrap}>
+                        <div className={styles.progressBar} style={{ width: `${progressPct}%` }} />
+                    </div>
+                </>
             )}
 
-            {/* ── Progress Bar ── */}
-            {entries.length > 0 && (
-                <div className={styles.progressBarWrap}>
-                    <div className={styles.progressBar} style={{ width: `${progressPct}%` }} />
-                    <span className={styles.progressPct}>{progressPct}%</span>
-                </div>
-            )}
-
-            {/* ── Config Bar ── */}
+            {/* ── Configuration Bar ── */}
             <div className={styles.configBar}>
+                {/* Dial Mode */}
                 <div className={styles.modeToggleGroup}>
                     <button
-                        type="button"
                         className={`${styles.modeBtn} ${dialMode === 'ai_agent' ? styles.modeBtnActiveAI : ''}`}
                         onClick={() => setDialMode('ai_agent')}
                         disabled={runState === 'running'}
+                        title="AI Voice Agent dials in cloud, pitches Senior Sweepstakes, detects voicemails, and warm transfers to you"
                     >
                         🤖 AI Agent
                     </button>
                     <button
-                        type="button"
                         className={`${styles.modeBtn} ${dialMode === 'direct' ? styles.modeBtnActive : ''}`}
                         onClick={() => setDialMode('direct')}
                         disabled={runState === 'running'}
+                        title="Direct 1-by-1 softphone calling through your browser headset"
                     >
-                        ⚡ Softphone
+                        🎧 Softphone
                     </button>
                 </div>
 
+                {/* Concurrency Limit */}
                 {dialMode === 'ai_agent' && (
                     <div className={styles.configGroup}>
-                        <label className={styles.configLabel}>Concurrent:</label>
+                        <span className={styles.configLabel}>Lines:</span>
                         <select
+                            className={styles.configSelect}
                             value={concurrencyLimit}
                             onChange={e => setConcurrencyLimit(Number(e.target.value))}
-                            className={styles.configSelect}
                             disabled={runState === 'running'}
                         >
-                            {[1, 2, 3, 5, 10].map(n => (
-                                <option key={n} value={n}>{n} call{n !== 1 ? 's' : ''}</option>
-                            ))}
+                            <option value={1}>1 Line (Sequential)</option>
+                            <option value={2}>2 Lines (Concurrent)</option>
+                            <option value={3}>3 Lines (Fast)</option>
+                            <option value={5}>5 Lines (Power Dial)</option>
                         </select>
                     </div>
                 )}
 
+                {/* Delay between calls */}
                 <div className={styles.configGroup}>
-                    <label className={styles.configLabel}>Delay:</label>
+                    <span className={styles.configLabel}>Delay:</span>
                     <select
+                        className={styles.configSelect}
                         value={delaySeconds}
                         onChange={e => setDelaySeconds(Number(e.target.value))}
-                        className={styles.configSelect}
+                        disabled={runState === 'running'}
                     >
+                        <option value={1}>1s</option>
                         <option value={2}>2s</option>
                         <option value={3}>3s</option>
                         <option value={5}>5s</option>
-                        <option value={10}>10s</option>
-                        <option value={30}>30s</option>
                     </select>
                 </div>
             </div>
 
-            {/* ── Upload or Lead Table ── */}
-            {entries.length === 0 ? (
+            {/* ── File Upload Dropzone (When list is empty) ── */}
+            {!entries.length && (
                 <div className={styles.uploadZone} onClick={() => fileInputRef.current?.click()}>
-                    <svg className={styles.uploadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                    </svg>
-                    <span className={styles.uploadText}>Upload your lead list</span>
-                    <span className={styles.uploadHint}>Excel (.xlsx, .xls), CSV, TSV, or TXT — auto-detects phone column</span>
+                    <UploadIcon />
+                    <span className={styles.uploadText}>Drop Lead List Here or Click to Browse</span>
+                    <span className={styles.uploadHint}>
+                        Upload Excel (.xlsx, .xls) or CSV with phone numbers and lead names. Auto-detects columns automatically!
+                    </span>
                     <div className={styles.supportedBadges}>
-                        {['.XLSX', '.XLS', '.CSV', '.TSV', '.TXT'].map(ext => (
-                            <span key={ext}>{ext}</span>
-                        ))}
+                        <span>.XLSX</span>
+                        <span>.XLS</span>
+                        <span>.CSV</span>
                     </div>
                     <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                        onChange={e => { if (e.target.files?.[0]) { parseFile(e.target.files[0]); e.target.value = ''; } }}
+                        accept=".xlsx,.xls,.csv"
                         className={styles.fileInput}
+                        onChange={e => {
+                            if (e.target.files?.[0]) parseFile(e.target.files[0]);
+                        }}
                     />
                 </div>
-            ) : (
-                <>
-                    {/* Campaign Controls */}
-                    <div className={styles.controls}>
-                        {runState === 'idle' && (
-                            <button
-                                className={`${styles.btn} ${styles.btnStart}`}
-                                onClick={handleStart}
-                                disabled={!isReady && dialMode === 'direct'}
-                            >
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z" /></svg>
-                                Start Campaign
-                            </button>
-                        )}
-                        {runState === 'running' && (
+            )}
+
+            {/* ── Campaign Control Bar ── */}
+            {entries.length > 0 && (
+                <div className={styles.controls}>
+                    {runState === 'idle' && (
+                        <button className={`${styles.btn} ${styles.btnStart}`} onClick={handleStart}>
+                            ▶ Start Campaign ({entries.length} Leads)
+                        </button>
+                    )}
+
+                    {runState === 'running' && (
+                        <>
                             <button className={`${styles.btn} ${styles.btnPause}`} onClick={handlePause}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                                Pause
+                                ⏸ Pause
                             </button>
-                        )}
-                        {runState === 'paused' && (
-                            <button className={`${styles.btn} ${styles.btnStart}`} onClick={handleResume}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M8 5v14l11-7z" /></svg>
-                                Resume
-                            </button>
-                        )}
-                        {runState === 'done' && (
-                            <span className={styles.doneTag}>🎉 Campaign Complete!</span>
-                        )}
-                        {(runState === 'running' || runState === 'paused') && (
                             <button className={`${styles.btn} ${styles.btnStop}`} onClick={handleStopAll}>
-                                <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><rect x="6" y="6" width="12" height="12" /></svg>
-                                Stop All
+                                ⏹ Stop All Calls
                             </button>
-                        )}
-                        {hasFailedOrNoAnswer && runState !== 'running' && (
-                            <button className={`${styles.btn} ${styles.btnRetry}`} onClick={handleRetryFailed}>
-                                🔄 Retry Failed
+                        </>
+                    )}
+
+                    {runState === 'paused' && (
+                        <>
+                            <button className={`${styles.btn} ${styles.btnStart}`} onClick={handleResume}>
+                                ▶ Resume Campaign
                             </button>
-                        )}
-                        <button className={`${styles.btn} ${styles.btnClear}`} onClick={handleClear}>
-                            Clear
-                        </button>
+                            <button className={`${styles.btn} ${styles.btnStop}`} onClick={handleStopAll}>
+                                ⏹ Stop All Calls
+                            </button>
+                        </>
+                    )}
 
-                        {/* Upload a new list */}
-                        <button
-                            className={`${styles.btn} ${styles.btnUpload}`}
-                            onClick={() => fileInputRef.current?.click()}
-                            title="Upload a new lead list"
-                        >
-                            📂 New List
-                        </button>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".xlsx,.xls,.csv,.tsv,.txt"
-                            onChange={e => { if (e.target.files?.[0]) { parseFile(e.target.files[0]); e.target.value = ''; } }}
-                            className={styles.fileInput}
-                        />
-                    </div>
+                    {runState === 'done' && (
+                        <span className={styles.doneTag}>✅ Campaign Complete</span>
+                    )}
 
-                    {/* Lead Table */}
+                    {(stats.failed > 0 || stats.noAnswer > 0 || stats.voicemail > 0) && runState !== 'running' && (
+                        <button className={`${styles.btn} ${styles.btnRetry}`} onClick={handleRetryFailed}>
+                            🔄 Retry Incomplete ({stats.failed + stats.noAnswer + stats.voicemail})
+                        </button>
+                    )}
+
+                    <button className={`${styles.btn} ${styles.btnUpload}`} onClick={() => fileInputRef.current?.click()}>
+                        📂 New File
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        className={styles.fileInput}
+                        onChange={e => {
+                            if (e.target.files?.[0]) parseFile(e.target.files[0]);
+                        }}
+                    />
+
+                    <button className={`${styles.btn} ${styles.btnClear}`} onClick={handleClear}>
+                        ✕ Clear
+                    </button>
+                </div>
+            )}
+
+            {/* ── Lead Rows List & Inspector Split View ── */}
+            {entries.length > 0 && (
+                <div className={`${styles.listContainer} ${selectedEntry ? styles.listContainerWithInspector : ''}`}>
                     <div className={styles.list}>
-                        {entries.map((entry, i) => {
-                            const isActive = entry.status === 'dialing' || entry.status === 'connected';
-                            const isCancellable = isActive;
-                            const isSkippable = entry.status === 'pending';
-                            const isRetryable = ['failed', 'no-answer', 'cancelled', 'skipped'].includes(entry.status);
+                        {entries.map((entry, idx) => {
+                            const isActive = entry.status === 'dialing' || entry.status === 'connected' || entry.status === 'transferring';
+                            const isSelected = selectedEntryId === entry.id;
 
                             return (
                                 <div
                                     key={entry.id}
-                                    className={`${styles.row} ${isActive ? styles.rowActive : ''} ${selectedEntry === entry.id ? styles.rowSelected : ''}`}
-                                    onClick={() => setSelectedEntry(selectedEntry === entry.id ? null : entry.id)}
+                                    className={`${styles.row} ${isActive ? styles.rowActive : ''} ${isSelected ? styles.rowSelected : ''}`}
+                                    onClick={() => setSelectedEntryId(entry.id)}
                                 >
-                                    <span className={styles.rowIndex}>{i + 1}</span>
+                                    <span className={styles.rowIndex}>{idx + 1}</span>
 
                                     <div className={styles.leadDetails}>
-                                        <span className={styles.rowNumber}>{entry.number}</span>
-                                        {entry.name && <span className={styles.leadName}>{entry.name}</span>}
-                                        {entry.note && <span className={styles.leadNote} title={entry.note}>⚠ {entry.note.substring(0, 40)}</span>}
+                                        <div className={styles.rowHeaderLine}>
+                                            <span className={styles.rowNumber}>{entry.number}</span>
+                                            {entry.name && <span className={styles.leadName}>({entry.name})</span>}
+                                        </div>
+
+                                        {/* Real-time speech preview / note */}
+                                        {entry.note && (
+                                            <span className={styles.leadNote}>
+                                                {entry.note}
+                                            </span>
+                                        )}
                                     </div>
 
+                                    {/* Status Badge */}
                                     <span className={`${styles.rowBadge} ${styles[`badge_${entry.status.replace('-', '_')}`]}`}>
-                                        {LABELS[entry.status]}
+                                        {entry.status === 'pending' && '⏳ Pending'}
+                                        {entry.status === 'queued' && '📋 Queued'}
+                                        {entry.status === 'dialing' && '🟡 Ringing...'}
+                                        {entry.status === 'connected' && '🟢 In Call'}
+                                        {entry.status === 'voicemail' && '📼 Voicemail'}
+                                        {entry.status === 'transferring' && '🔔 Transferring!'}
+                                        {entry.status === 'completed' && `✅ ${formatDuration(entry.duration)}`}
+                                        {entry.status === 'no-answer' && '⭕ No Answer'}
+                                        {entry.status === 'busy' && '🔴 Busy'}
+                                        {entry.status === 'failed' && '❌ Failed'}
+                                        {entry.status === 'cancelled' && '⏹ Cancelled'}
+                                        {entry.status === 'skipped' && '⏭ Skipped'}
                                     </span>
 
-                                    {/* Per-lead action buttons */}
-                                    <div className={styles.rowActions}>
-                                        {isCancellable && (
+                                    {/* Action Buttons */}
+                                    <div className={styles.rowActions} onClick={e => e.stopPropagation()}>
+                                        {isActive && (
                                             <button
                                                 className={`${styles.rowActionBtn} ${styles.rowActionCancel}`}
-                                                onClick={ev => { ev.stopPropagation(); handleCancelLead(entry.id); }}
-                                                title="Hang up this call"
+                                                onClick={() => handleCancelEntry(entry)}
+                                                title="Cancel / Hangup this call"
                                             >
-                                                ✕ Hang up
+                                                Hang Up
                                             </button>
                                         )}
-                                        {isSkippable && (
+                                        {entry.status === 'pending' && (
                                             <button
                                                 className={`${styles.rowActionBtn} ${styles.rowActionSkip}`}
-                                                onClick={ev => { ev.stopPropagation(); handleSkipLead(entry.id); }}
-                                                title="Skip this number"
+                                                onClick={() => handleSkipEntry(entry.id)}
+                                                title="Skip this lead"
                                             >
-                                                ⏭ Skip
+                                                Skip
                                             </button>
                                         )}
-                                        {isRetryable && (
+                                        {(entry.status === 'failed' || entry.status === 'no-answer' || entry.status === 'voicemail' || entry.status === 'cancelled') && (
                                             <button
                                                 className={`${styles.rowActionBtn} ${styles.rowActionRetry}`}
-                                                onClick={ev => { ev.stopPropagation(); handleRetryLead(entry.id); }}
-                                                title="Retry this number"
+                                                onClick={() => dialEntry(entry.id)}
+                                                title="Redial this lead now"
                                             >
-                                                🔄
+                                                Redial
                                             </button>
                                         )}
                                     </div>
@@ -630,31 +789,65 @@ export function AutoDialer() {
                             );
                         })}
                     </div>
-                </>
+
+                    {/* ── Live Transcript Inspector Drawer ── */}
+                    {selectedEntry && (
+                        <div className={styles.inspector}>
+                            <div className={styles.inspectorHeader}>
+                                <span className={styles.inspectorTitle}>🎙️ LIVE CALL INSPECTOR</span>
+                                <button className={styles.inspectorClose} onClick={() => setSelectedEntryId(null)}>×</button>
+                            </div>
+
+                            <div className={styles.inspectorMeta}>
+                                <span className={styles.inspectorPhone}>{selectedEntry.number}</span>
+                                {selectedEntry.name && <span className={styles.inspectorLeadName}>{selectedEntry.name}</span>}
+                                <div className={styles.inspectorStatusRow}>
+                                    <span className={`${styles.rowBadge} ${styles[`badge_${selectedEntry.status.replace('-', '_')}`]}`}>
+                                        {selectedEntry.status.toUpperCase()}
+                                    </span>
+                                    {selectedEntry.duration !== undefined && selectedEntry.duration > 0 && (
+                                        <span className={styles.leadNote}>Duration: {formatDuration(selectedEntry.duration)}</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className={styles.inspectorTurns}>
+                                {selectedEntry.turns && selectedEntry.turns.length > 0 ? (
+                                    selectedEntry.turns.map((turn, i) => (
+                                        <div
+                                            key={i}
+                                            className={`${styles.turnBubble} ${turn.role === 'user' ? styles.turnUser : styles.turnAssistant}`}
+                                        >
+                                            <div className={styles.turnRole}>
+                                                {turn.role === 'user' ? '👤 Customer' : '🤖 AI Agent (Ashley)'}
+                                            </div>
+                                            <div>{turn.text}</div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className={styles.noTurns}>
+                                        {selectedEntry.status === 'dialing'
+                                            ? '🟡 Customer phone is ringing... AI will begin speaking upon answer.'
+                                            : selectedEntry.status === 'pending'
+                                            ? '⏳ Waiting in queue to be dialed.'
+                                            : selectedEntry.note || 'No transcript turns recorded yet.'}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     );
 }
 
-// ── Stat Pill Component ───────────────────────────────────────────────────────
-function StatPill({ label, count, color, pulse }: { label: string; count: number; color: string; pulse?: boolean }) {
-    if (count === 0) return null;
+function UploadIcon() {
     return (
-        <div className={`${styles.statPill} ${styles[`statPill_${color}`]} ${pulse ? styles.statPillPulse : ''}`}>
-            <span className={styles.statCount}>{count}</span>
-            <span className={styles.statLabel}>{label}</span>
-        </div>
+        <svg className={styles.uploadIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
     );
 }
-
-const LABELS: Record<DialStatus, string> = {
-    pending: 'Pending',
-    queued: 'Queued',
-    dialing: '📞 Dialing...',
-    connected: '🤖 AI Live',
-    completed: '✅ Done',
-    'no-answer': '📵 No Answer',
-    failed: '❌ Failed',
-    cancelled: '🚫 Cancelled',
-    skipped: '⏭ Skipped',
-};

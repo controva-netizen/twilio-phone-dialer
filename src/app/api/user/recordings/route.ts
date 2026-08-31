@@ -34,10 +34,8 @@ export async function GET(request: NextRequest) {
         const url = new URL(request.url)
         const type = url.searchParams.get('type') // 'call' | 'voicemail' | null (all)
 
-        // Sync call recordings from Twilio API (only for call recordings, not voicemails)
-        if (type === 'call' || !type) {
-            await syncTwilioRecordings(supabase, user.id)
-        }
+        // Always sync latest recordings from Twilio to guarantee no recordings are missed
+        await syncTwilioRecordings(supabase, user.id)
 
         let query = supabase
             .from('call_recordings')
@@ -56,7 +54,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to fetch recordings' }, { status: 500 })
         }
 
-        // Also get unread voicemail count
+        // Get unread voicemail count
         const { count } = await supabase
             .from('call_recordings')
             .select('*', { count: 'exact', head: true })
@@ -73,8 +71,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * Sync call recordings from Twilio REST API into Supabase.
- * This catches recordings that the recordingStatusCallback may have missed
- * (e.g. if ngrok was down, server restarted, etc.)
+ * This catches recordings that the recordingStatusCallback may have missed.
  */
 async function syncTwilioRecordings(supabase: ReturnType<typeof createServerClient>, userId: string) {
     try {
@@ -89,36 +86,35 @@ async function syncTwilioRecordings(supabase: ReturnType<typeof createServerClie
 
         const client = twilio(apiKey, apiSecret, { accountSid })
 
-        // Get user's phone numbers to match recordings
+        // Get user's phone numbers
         const { data: phoneNumbers } = await supabase
             .from('user_phone_numbers')
             .select('phone_number')
             .eq('user_id', userId)
 
-        if (!phoneNumbers || phoneNumbers.length === 0) return
+        const userNumbers = (phoneNumbers || []).map((p: { phone_number: string }) => p.phone_number.replace(/\D/g, ''))
+        const defaultNum = (process.env.TWILIO_DEFAULT_NUMBER || '+13072076444').replace(/\D/g, '')
+        userNumbers.push(defaultNum)
 
         // Get existing recording SIDs from DB to avoid duplicates
         const { data: existingRecordings } = await supabase
             .from('call_recordings')
             .select('recording_sid')
             .eq('user_id', userId)
-            .eq('recording_type', 'call')
 
         const existingSids = new Set((existingRecordings || []).map((r: { recording_sid: string }) => r.recording_sid))
 
-        // Fetch DialVerb recordings from Twilio (last 7 days)
-        const sevenDaysAgo = new Date()
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        // Fetch recordings from Twilio (last 14 days)
+        const fourteenDaysAgo = new Date()
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
 
         const recordings = await client.recordings.list({
-            dateCreatedAfter: sevenDaysAgo,
+            dateCreatedAfter: fourteenDaysAgo,
             limit: 50,
         })
 
         if (recordings.length === 0) return
 
-        // For each recording, check if it belongs to this user's calls
-        const userPhoneSet = new Set(phoneNumbers.map((p: { phone_number: string }) => p.phone_number))
         const newRecordings: Array<{
             user_id: string
             phone_number: string
@@ -133,28 +129,25 @@ async function syncTwilioRecordings(supabase: ReturnType<typeof createServerClie
         }> = []
 
         for (const rec of recordings) {
-            // Skip if we already have this recording
             if (existingSids.has(rec.sid)) continue
-
-            // Skip non-completed recordings
             if (rec.status !== 'completed') continue
 
-            // Check if this recording's call involves the user's phone numbers
-            // We need to look up the call to get the From/To
             try {
                 const call = await client.calls(rec.callSid).fetch()
                 const from = call.from || ''
                 const to = call.to || ''
+                const fromDigits = from.replace(/\D/g, '')
+                const toDigits = to.replace(/\D/g, '')
 
-                // Check if this call is associated with the user's phone numbers
-                const isUserCall = userPhoneSet.has(from) || userPhoneSet.has(to) ||
-                    // Also check if the call was to a client identity (user_id)
-                    to.includes(userId)
+                // Check if this call is associated with the user's phone numbers or account
+                const isMatch = userNumbers.some(n => n.includes(fromDigits) || n.includes(toDigits) || fromDigits.includes(n) || toDigits.includes(n)) ||
+                                to.includes(userId) || from.includes(userId)
 
-                if (!isUserCall) continue
+                if (!isMatch && userNumbers.length > 0) continue
 
-                const callerNumber = userPhoneSet.has(from) ? to : from
-                const userPhone = userPhoneSet.has(from) ? from : to
+                const isVoicemail = rec.source === 'RecordVerb' || rec.channels === 1
+                const callerNumber = from || 'Unknown'
+                const userPhone = to || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444'
 
                 newRecordings.push({
                     user_id: userId,
@@ -164,12 +157,11 @@ async function syncTwilioRecordings(supabase: ReturnType<typeof createServerClie
                     recording_sid: rec.sid,
                     call_sid: rec.callSid,
                     duration: rec.duration ? parseInt(String(rec.duration), 10) : 0,
-                    recording_type: 'call',
+                    recording_type: isVoicemail ? 'voicemail' : 'call',
                     is_read: false,
                     created_at: rec.dateCreated ? rec.dateCreated.toISOString() : new Date().toISOString(),
                 })
             } catch (callErr) {
-                // Skip recordings we can't look up
                 console.warn(`[Recordings Sync] Could not fetch call ${rec.callSid}:`, callErr)
                 continue
             }

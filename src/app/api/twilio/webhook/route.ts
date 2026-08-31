@@ -3,8 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { getPublicAppUrl } from '@/lib/url'
 
 // This route handles:
-// 1. Incoming calls - routes to the correct user based on the dialed number
-// 2. Outgoing calls - uses the user's default caller ID
+// 1. Incoming calls - routes through the AI agent & softphone with voicemail fallback
+// 2. Outgoing calls - routes direct softphone calls, intro scripts, or AI calls with recording
 // Twilio sends form-encoded data via POST or query params via GET.
 
 function twimlResponse(twiml: string): NextResponse {
@@ -43,20 +43,17 @@ function createSupabaseAdmin() {
 async function extractParams(request: NextRequest): Promise<Record<string, string>> {
     const params: Record<string, string> = {}
 
-    // 1. Check URL query params
     request.nextUrl.searchParams.forEach((value, key) => {
         params[key] = value
     })
 
-    // 2. Parse POST body
     if (request.method === 'POST') {
         try {
             const contentType = request.headers.get('content-type') || ''
             if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
-                // Cast needed: @types/node's global FormData shadows the DOM's
-                const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
+                const formData = await request.formData()
                 formData.forEach((value, key) => {
-                    params[key] = value
+                    params[key] = value.toString()
                 })
             } else if (contentType.includes('application/json')) {
                 const json = await request.json()
@@ -96,8 +93,6 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         const isOutgoing = from.startsWith('client:') || direction === 'outbound-api'
 
         if (isOutgoing) {
-            // For outgoing calls, find the real destination number the user typed.
-            // Prefer custom params sent by the browser SDK, fallback to Twilio 'To'.
             let to = params['ToNumber'] ||
                      params['phoneNumber'] ||
                      params['PhoneNumber'] ||
@@ -108,16 +103,13 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
                      params['phone_number'] ||
                      ''
 
-            // If still empty or is a TwiML App SID / client identity, dig further
             if (!to || to.startsWith('AP') || to.startsWith('client:')) {
-                // Check Twilio 'To' — for TwiML App calls this is the App SID; skip those
                 const twilioTo = params['To'] || ''
                 if (twilioTo && !twilioTo.startsWith('AP') && !twilioTo.startsWith('client:')) {
                     to = twilioTo
                 }
             }
 
-            // Last resort: scan all params for a phone-number-like value
             if (!to || to.startsWith('AP') || to.startsWith('client:')) {
                 const digitParam = Object.entries(params).find(([k, v]) =>
                     k !== 'From' &&
@@ -137,7 +129,6 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
         }
 
         // INCOMING: real phone call hitting our Twilio number.
-        // Twilio sets To = our Twilio phone number, From = caller's real number.
         const to = params['To'] || params['Called'] || params['called'] || ''
         console.log(`[Twilio Webhook] INCOMING → to=${to}, from=${from}, direction=${direction}`)
         return await handleIncomingCall(to, from, request)
@@ -151,7 +142,6 @@ async function handleRequest(request: NextRequest): Promise<NextResponse> {
     }
 }
 
-// Support both GET and POST from Twilio
 export async function POST(request: NextRequest) {
     return handleRequest(request)
 }
@@ -191,83 +181,60 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
 
     const cleanTo = formatE164(to)
 
-    // 1. Check if callerId was explicitly sent in params from client (filter out empty strings)
+    // 1. Check if callerId was explicitly sent in params
     let callerId = ''
     const paramCallerId = (params['callerId'] || params['CallerId'] || params['fromNumber'] || params['FromNumber'] || '').trim()
     if (paramCallerId && !paramCallerId.startsWith('client:') && paramCallerId.replace(/[^0-9]/g, '').length >= 7) {
         callerId = paramCallerId
     }
 
-    // 2. Look up the caller's default number from Supabase
-    if (!callerId && userId) {
+    // 2. Look up the caller's default number and recording settings from Supabase
+    let recordingEnabled = true // Enable call recording by default
+    if (userId) {
         try {
             const supabase = createSupabaseAdmin()
-            
-            // Check user's default number
             const { data: defaultData } = await supabase
                 .from('user_phone_numbers')
-                .select('phone_number')
+                .select('phone_number, call_recording_enabled')
                 .eq('user_id', userId)
                 .eq('is_default', true)
                 .limit(1)
                 .single()
 
-            if (defaultData?.phone_number) {
+            if (defaultData?.phone_number && !callerId) {
                 callerId = defaultData.phone_number
-            } else {
-                // Check any assigned number for this user
-                const { data: anyData } = await supabase
-                    .from('user_phone_numbers')
-                    .select('phone_number')
-                    .eq('user_id', userId)
-                    .limit(1)
-                    .single()
-
-                if (anyData?.phone_number) {
-                    callerId = anyData.phone_number
-                }
+            }
+            if (defaultData && defaultData.call_recording_enabled !== undefined) {
+                recordingEnabled = !!defaultData.call_recording_enabled
             }
         } catch (e) {
-            console.error('[Twilio Webhook] Error fetching callerId from Supabase:', e)
+            console.error('[Twilio Webhook] Error fetching callerId/settings from Supabase:', e)
         }
     }
 
-    // 3. Fallback to any number in user_phone_numbers table
+    // 3. Fallback to default number
     if (!callerId) {
-        try {
-            const supabase = createSupabaseAdmin()
-            const { data: fallbackData } = await supabase
-                .from('user_phone_numbers')
-                .select('phone_number')
-                .limit(1)
-                .single()
-
-            if (fallbackData?.phone_number) {
-                callerId = fallbackData.phone_number
-            }
-        } catch {}
+        callerId = process.env.TWILIO_DEFAULT_NUMBER || 
+                   process.env.TWILIO_PHONE_NUMBER || 
+                   process.env.TWILIO_CALLER_ID || 
+                   '+13072076444'
     }
 
-    // 4. Fallback to environment variables
-    if (!callerId) {
-        const envNumber = process.env.TWILIO_DEFAULT_NUMBER || 
-                          process.env.TWILIO_PHONE_NUMBER || 
-                          process.env.TWILIO_CALLER_ID || 
-                          '+13072076444' // User's verified Twilio number
-        callerId = envNumber
-    }
-
-    // Strictly format callerId to E.164 format (+1XXXXXXXXXX)
     callerId = formatE164(callerId) || '+13072076444'
 
-    console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with mode=${callMode}, verified callerId=${callerId}`)
+    const recordAttr = recordingEnabled ? ' record="record-from-answer-dual"' : ''
+    const recordCallbackAttr = recordingEnabled
+        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${encodeURIComponent(userId || 'user')}" recordingStatusCallbackEvent="completed"`
+        : ''
+
+    console.log(`[Twilio Webhook] Outgoing call to ${cleanTo} with mode=${callMode}, callerId=${callerId}, recording=${recordingEnabled}`)
     
-    // Mode 1: AI Agent (Dials customer, AI engages upon answer, and bridges to agent on transfer)
+    // Mode 1: AI Agent
     if (callMode === 'ai_agent') {
         const aiUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=${encodeURIComponent(callerId)}`
         return twimlResponse(`
             <Response>
-                <Dial answerOnBridge="true" callerId="${callerId}">
+                <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}>
                     <Number url="${aiUrl}">${cleanTo}</Number>
                 </Dial>
             </Response>
@@ -279,7 +246,7 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
         const scriptUrl = `${appUrl}/api/twilio/ai-call/script-intro`
         return twimlResponse(`
             <Response>
-                <Dial answerOnBridge="true" callerId="${callerId}">
+                <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}>
                     <Number url="${scriptUrl}">${cleanTo}</Number>
                 </Dial>
             </Response>
@@ -289,7 +256,7 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     // Mode 3: Direct Softphone Call (Default)
     return twimlResponse(`
         <Response>
-            <Dial answerOnBridge="true" callerId="${callerId}">
+            <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}>
                 <Number>${cleanTo}</Number>
             </Dial>
         </Response>
@@ -298,11 +265,8 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
 
 async function handleIncomingCall(to: string, from: string, request: NextRequest): Promise<NextResponse> {
     const supabase = createSupabaseAdmin()
-
-    // Find which user owns the dialed number
     const dialedNumber = to || ''
 
-    // Try exact match first, then E.164-normalized match
     let numberRecord = null
 
     const exactResult = await supabase
@@ -315,7 +279,6 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
     if (!exactResult.error && exactResult.data) {
         numberRecord = exactResult.data
     } else {
-        // Try E.164 normalized version (e.g. +13072076444 vs 3072076444)
         const normalizedNumber = formatE164(dialedNumber)
         if (normalizedNumber && normalizedNumber !== dialedNumber) {
             const normalizedResult = await supabase
@@ -330,10 +293,8 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
         }
     }
 
-    // Resolve the agent userId — fall back to first user in the system if number not mapped
     let userId: string | null = numberRecord?.user_id || null
     if (!userId) {
-        console.warn(`[Twilio Webhook] No user found for number ${dialedNumber}, using first available user`)
         try {
             const { data: anyNumber } = await supabase
                 .from('user_phone_numbers')
@@ -350,22 +311,21 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     console.log(`[Twilio Webhook] Incoming call → routing through AI agent for user ${agentUserId}`)
 
-    // Route through the AI agent — same entry point used for outgoing AI calls.
-    // The AI will greet the caller, run the conversation, then warm-transfer
-    // to the agent's browser softphone (identified by agentUserId / their UUID).
     const aiEntryUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}`
 
-    const recordAttr = numberRecord?.call_recording_enabled ? ' record="record-from-answer-dual"' : ''
-    const recordCallbackAttr = numberRecord?.call_recording_enabled
-        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${agentUserId}" recordingStatusCallbackEvent="completed"`
+    // By default record incoming calls if enabled or default
+    const recordingEnabled = numberRecord ? !!numberRecord.call_recording_enabled : true
+    const recordAttr = recordingEnabled ? ' record="record-from-answer-dual"' : ''
+    const recordCallbackAttr = recordingEnabled
+        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${encodeURIComponent(agentUserId)}"`
         : ''
-    const voicemailEnabled = numberRecord?.voicemail_enabled
+    
+    // Voicemail fallback if agent softphone is unavailable or times out
+    const voicemailEnabled = numberRecord ? !!numberRecord.voicemail_enabled : true
     const actionAttr = voicemailEnabled
-        ? ` action="${appUrl}/api/twilio/voicemail?user_id=${agentUserId}&amp;from=${encodeURIComponent(from || '')}"`
+        ? ` action="${appUrl}/api/twilio/voicemail?user_id=${encodeURIComponent(agentUserId)}&amp;from=${encodeURIComponent(from || '')}"`
         : ''
 
-    // <Number url=...> fires the AI entry webhook when the call is answered,
-    // then bridges the two legs together once the AI connects.
     return twimlResponse(`
         <Response>
             <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="30">

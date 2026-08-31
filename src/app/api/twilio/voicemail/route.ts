@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-
-// This route handles two scenarios:
-// 1. POST from Dial action (no-answer) → plays voicemail greeting and records
-// 2. POST from Record action (after caller leaves a message) → saves recording to DB
+import { getPublicAppUrl } from '@/lib/url'
 
 function twimlResponse(twiml: string): NextResponse {
     return new NextResponse(twiml, {
@@ -24,25 +21,54 @@ function createSupabaseAdmin() {
     )
 }
 
+async function extractParams(request: NextRequest): Promise<Record<string, string>> {
+    const params: Record<string, string> = {}
+    request.nextUrl.searchParams.forEach((value, key) => {
+        params[key] = value
+    })
+
+    try {
+        const contentType = request.headers.get('content-type') || ''
+        if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+            const formData = await request.formData()
+            formData.forEach((value, key) => {
+                params[key] = value.toString()
+            })
+        } else if (contentType.includes('application/json')) {
+            const json = await request.json()
+            Object.entries(json).forEach(([k, v]) => {
+                if (v !== undefined && v !== null) params[k] = String(v)
+            })
+        } else {
+            const rawText = await request.text()
+            const searchParams = new URLSearchParams(rawText)
+            searchParams.forEach((value, key) => {
+                params[key] = value
+            })
+        }
+    } catch (e) {
+        console.error('[Voicemail Webhook] Param extraction error:', e)
+    }
+
+    return params
+}
+
 export async function POST(request: NextRequest) {
     try {
-        const url = new URL(request.url)
-        const userId = url.searchParams.get('user_id')
-        const callerNumber = url.searchParams.get('from') || ''
-        const isSaveAction = url.searchParams.get('action') === 'save'
+        const params = await extractParams(request)
+        const userId = params['user_id'] || params['userId'] || ''
+        const callerNumber = params['from'] || params['From'] || params['caller'] || ''
+        const isSaveAction = params['action'] === 'save'
+        const dialCallStatus = (params['DialCallStatus'] || '').toLowerCase()
+        const recordingUrl = params['RecordingUrl'] || ''
+        const recordingSid = params['RecordingSid'] || ''
+        const recordingDuration = params['RecordingDuration'] || '0'
+        const callSid = params['CallSid'] || ''
 
-        // Cast needed: @types/node's global FormData shadows the DOM's and lacks get()
-        const formData = await request.formData() as unknown as Record<string, string> & { forEach(cb: (value: string, key: string) => void): void }
-        const dialCallStatus = formData['DialCallStatus'] || null
-        const recordingUrl = formData['RecordingUrl'] || null
-        const recordingSid = formData['RecordingSid'] || null
-        const recordingDuration = formData['RecordingDuration'] || null
-        const callSid = formData['CallSid'] || null
-
-        console.log(`[Voicemail] userId: ${userId}, dialStatus: ${dialCallStatus}, action: ${isSaveAction ? 'save' : 'prompt'}`)
+        console.log(`[Voicemail Webhook] userId: ${userId}, dialStatus: ${dialCallStatus}, action: ${isSaveAction ? 'save' : 'prompt'}, url: ${recordingUrl}`)
 
         // Scenario 2: Twilio is calling us back after recording was completed
-        if (isSaveAction && recordingUrl && userId) {
+        if (isSaveAction && recordingUrl) {
             return await saveVoicemail({
                 userId,
                 callerNumber,
@@ -54,20 +80,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Scenario 1: Dial action callback - check if we need to go to voicemail
-        // DialCallStatus will be 'no-answer', 'busy', 'failed', or 'completed'
-        if (dialCallStatus === 'completed') {
-            // Call was answered and completed normally, no voicemail needed
+        if (dialCallStatus === 'completed' || dialCallStatus === 'answered') {
             return twimlResponse(`<Response></Response>`)
         }
 
-        // Derive app URL from the incoming request (so it uses ngrok/deployed URL)
-        const appUrl = `${request.nextUrl.protocol}//${request.headers.get('host')}`
-
-        // Look up custom greeting
+        const appUrl = await getPublicAppUrl(request)
         const supabase = createSupabaseAdmin()
         let greetingUrl: string | null = null
 
-        if (userId) {
+        if (userId && userId !== 'user') {
             const { data } = await supabase
                 .from('user_phone_numbers')
                 .select('voicemail_greeting_url')
@@ -79,12 +100,11 @@ export async function POST(request: NextRequest) {
             greetingUrl = data?.voicemail_greeting_url || null
         }
 
-        // Build TwiML: Play greeting (or Say default), then Record
         const greetingTwiml = greetingUrl
             ? `<Play>${greetingUrl}</Play>`
-            : `<Say voice="Polly.Amy">The person you are calling is not available. Please leave a message after the beep.</Say>`
+            : `<Say voice="Polly.Joanna">The person you are calling is unavailable. Please leave a message after the beep.</Say>`
 
-        const recordActionUrl = `${appUrl}/api/twilio/voicemail?user_id=${userId}&amp;from=${encodeURIComponent(callerNumber)}&amp;action=save`
+        const recordActionUrl = `${appUrl}/api/twilio/voicemail?user_id=${encodeURIComponent(userId)}&amp;from=${encodeURIComponent(callerNumber)}&amp;action=save`
 
         return twimlResponse(`
             <Response>
@@ -96,11 +116,11 @@ export async function POST(request: NextRequest) {
                     transcribe="false"
                     timeout="10"
                 />
-                <Say voice="Polly.Amy">No message was recorded. Goodbye.</Say>
+                <Say voice="Polly.Joanna">No message was recorded. Goodbye.</Say>
             </Response>
         `)
     } catch (error) {
-        console.error('[Voicemail] Error:', error)
+        console.error('[Voicemail] Error in handler:', error)
         return twimlResponse(`
             <Response>
                 <Say>An error occurred with voicemail. Goodbye.</Say>
@@ -121,21 +141,38 @@ interface SaveVoicemailParams {
 async function saveVoicemail(params: SaveVoicemailParams): Promise<NextResponse> {
     const supabase = createSupabaseAdmin()
 
-    // Get the user's phone number for context
+    let targetUserId = params.userId
+    if (!targetUserId || targetUserId === 'user') {
+        const { data: anyNumber } = await supabase
+            .from('user_phone_numbers')
+            .select('user_id')
+            .limit(1)
+            .single()
+        if (anyNumber?.user_id) targetUserId = anyNumber.user_id
+    }
+
+    if (!targetUserId) {
+        console.warn('[Voicemail] No target user found to assign voicemail')
+        return twimlResponse(`
+            <Response>
+                <Say voice="Polly.Joanna">Thank you. Your message has been received. Goodbye.</Say>
+            </Response>
+        `)
+    }
+
     const { data: numberData } = await supabase
         .from('user_phone_numbers')
         .select('phone_number')
-        .eq('user_id', params.userId)
-        .eq('is_default', true)
+        .eq('user_id', targetUserId)
         .limit(1)
         .single()
 
     const { error } = await supabase
         .from('call_recordings')
         .insert({
-            user_id: params.userId,
+            user_id: targetUserId,
             phone_number: numberData?.phone_number || '',
-            caller_number: params.callerNumber,
+            caller_number: params.callerNumber || 'Unknown Caller',
             recording_url: params.recordingUrl,
             recording_sid: params.recordingSid,
             call_sid: params.callSid,
@@ -147,12 +184,12 @@ async function saveVoicemail(params: SaveVoicemailParams): Promise<NextResponse>
     if (error) {
         console.error('[Voicemail] Failed to save voicemail:', error)
     } else {
-        console.log(`[Voicemail] Saved voicemail from ${params.callerNumber} for user ${params.userId}`)
+        console.log(`[Voicemail] Saved voicemail from ${params.callerNumber} for user ${targetUserId}`)
     }
 
     return twimlResponse(`
         <Response>
-            <Say voice="Polly.Amy">Thank you. Your message has been recorded. Goodbye.</Say>
+            <Say voice="Polly.Joanna">Thank you. Your message has been recorded. Goodbye.</Say>
         </Response>
     `)
 }
