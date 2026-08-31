@@ -140,7 +140,7 @@ async function syncTwilioRecordings(supabase: ReturnType<typeof createServerClie
                 const toDigits = to.replace(/\D/g, '')
 
                 // Check if this call is associated with the user's phone numbers or account
-                const isMatch = userNumbers.some(n => n.includes(fromDigits) || n.includes(toDigits) || fromDigits.includes(n) || toDigits.includes(n)) ||
+                const isMatch = userNumbers.some((n: string) => n.includes(fromDigits) || n.includes(toDigits) || fromDigits.includes(n) || toDigits.includes(n)) ||
                                 to.includes(userId) || from.includes(userId)
 
                 if (!isMatch && userNumbers.length > 0) continue
