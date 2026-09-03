@@ -242,7 +242,7 @@ export default function SettingsPage() {
                                     <option value="Polly.Joanna">Joanna (US Female - Natural & Conversational)</option>
                                     <option value="Polly.Salli">Salli (US Female - Warm & Authoritative)</option>
                                     <option value="Polly.Matthew">Matthew (US Male - Professional Executive)</option>
-                                    <option value="Polly.Amy">Amy (UK Female - Senior Specialist)</option>
+                                    <option value="Polly.Amy">Amy (UK Female - Professional)</option>
                                     <option value="alice">Alice (Standard Voice)</option>
                                 </select>
                             </div>
@@ -400,8 +400,8 @@ export default function SettingsPage() {
                         <h2 className={styles.sectionTitle}>About</h2>
                         <div className={styles.card}>
                             <div className={styles.about}>
-                                <p><strong>Marvik Dialer v2.0</strong></p>
-                                <p className={styles.aboutDesc}>AI Voice Agent & Telephony System powered by Twilio, Replicate, Cerebras, and Deepgram</p>
+                                <p><strong>Netro Scale v2.0</strong></p>
+                                <p className={styles.aboutDesc}>AI voice agent &amp; telephony system powered by Twilio, Replicate, Cerebras, and Deepgram</p>
                             </div>
                         </div>
                     </section>

@@ -112,7 +112,6 @@ export default function Home() {
 
     // Call Strategy / Mode: direct | script | ai_agent
     const [callMode, setCallMode] = useState<'direct' | 'script' | 'ai_agent'>('direct');
-    const [selectedCampaign] = useState('Senior Sweepstakes Recovery');
     const [showAISimulator, setShowAISimulator] = useState(false);
     const [activeAiCall, setActiveAiCall] = useState<LiveSingleAiCall | null>(null);
 
@@ -375,7 +374,7 @@ export default function Home() {
                     <div className={styles.leftColumn}>
                         <div className={styles.dialerContainer}>
                             <div className={styles.dialerHeader}>
-                                <h2 className={styles.dialerTitle}>Marvik Softphone</h2>
+                                <h2 className={styles.dialerTitle}>Netro Scale Softphone</h2>
                                 <button
                                     className={`${styles.autoDialBtn} ${showAutoDialer ? styles.autoDialBtnActive : ''}`}
                                     onClick={() => setShowAutoDialer(!showAutoDialer)}
@@ -414,8 +413,8 @@ export default function Home() {
                                     <div className={styles.aiBadgeHeader}>
                                         <div className={styles.aiPulseDot}></div>
                                         <div className={styles.aiBadgeText}>
-                                            <span className={styles.aiBadgeTitle}>AI Agent Armed (Senior Sweepstakes Recovery)</span>
-                                            <span className={styles.aiBadgeSub}>{selectedCampaign} — 15 Objections & Warm Transfer</span>
+                                            <span className={styles.aiBadgeTitle}>AI Voice Agent Ready</span>
+                                            <span className={styles.aiBadgeSub}>Uses your saved script &amp; knowledge base — warm transfer to your softphone</span>
                                         </div>
                                     </div>
                                     <div className={styles.aiActions}>

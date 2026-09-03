@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 }
 
 async function handleScript(request: NextRequest): Promise<NextResponse> {
-    const script = `Hello! Thank you for taking our call regarding your inquiry. Please hold for one second while I connect you directly with our senior specialist.`;
+    const script = `Hello, and thanks for taking our call from Netro Scale. Please hold for a moment while I connect you with a member of our team.`;
     return twimlResponse(`
         <Response>
             <Say voice="Polly.Joanna" language="en-US">${script}</Say>

@@ -575,7 +575,7 @@ export function AutoDialer() {
                         className={`${styles.modeBtn} ${dialMode === 'ai_agent' ? styles.modeBtnActiveAI : ''}`}
                         onClick={() => setDialMode('ai_agent')}
                         disabled={runState === 'running'}
-                        title="AI Voice Agent dials in cloud, pitches Senior Sweepstakes, detects voicemails, and warm transfers to you"
+                        title="AI voice agent dials in the cloud using your saved script, detects voicemails, and warm-transfers answered calls to you"
                     >
                         🤖 AI Agent
                     </button>

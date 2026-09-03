@@ -112,7 +112,7 @@ export function GlobalDialerFAB() {
                         <div className={styles.headerLeft}>
                             <span className={styles.headerLiveDot} />
                             <div>
-                                <h4 className={styles.headerTitle}>Marvik Softphone</h4>
+                                <h4 className={styles.headerTitle}>Netro Scale Softphone</h4>
                                 <span className={styles.headerStatus}>
                                     {isOnCall ? `Active Call • ${formatDuration(twilio.duration)}` : isReady ? 'Line 1 • Ready' : 'Connecting...'}
                                 </span>
@@ -295,7 +295,7 @@ export function GlobalDialerFAB() {
                 className={`${styles.fab} ${isOpen ? styles.fabActive : ''}`}
                 onClick={() => setIsOpen(!isOpen)}
                 aria-label="Open Phone Dialer"
-                title="Marvik Dialer"
+                title="Netro Scale Dialer"
             >
                 <div className={styles.fabIconWrapper}>
                     {isOpen ? (

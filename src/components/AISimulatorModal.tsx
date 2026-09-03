@@ -18,14 +18,14 @@ interface AISimulatorModalProps {
 }
 
 const SAMPLE_OBJECTIONS = [
-    "I have to pay? That sounds like a scam.",
-    "Why can't you deduct the fee from my winnings?",
-    "I don't have $1,500 for a registration fee.",
-    "Can you send me something in writing first?",
-    "I want to talk to my lawyer or son first.",
-    "How did you get my name and phone number?",
-    "What is the claim number and deadline?",
-    "Can I speak with a live senior specialist?",
+    "Who is this and what company are you calling from?",
+    "What is this call about?",
+    "What are your business hours?",
+    "How much do your services cost?",
+    "Can you email me the details instead?",
+    "I'm busy right now, can you call back later?",
+    "I'm not interested, please remove me from your list.",
+    "Can I speak with a real person?",
 ];
 
 export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
@@ -36,7 +36,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
     const [messages, setMessages] = useState<Message[]>([
         {
             sender: 'ai',
-            text: "Hello! My name is Alex, and I am a Senior Recovery Specialist with the Consumer Award Resolution Bureau. I have a time-sensitive file here regarding an unclaimed sweepstakes award in your name. Do you have a quick moment to speak with me?",
+            text: "Hi, this is Riley from Netro Scale. Thanks for taking my call — do you have a quick moment to talk?",
         },
     ]);
     const [inputText, setInputText] = useState('');
@@ -140,7 +140,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
             const data = await res.json();
             const aiMsg: Message = {
                 sender: 'ai',
-                text: data.reply || "Let me connect you directly with our senior specialist right now.",
+                text: data.reply || "Let me connect you with a member of our team.",
                 shouldTransfer: data.shouldTransfer,
                 provider: data.provider,
                 latencyMs: data.latencyMs,
@@ -164,7 +164,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
         setMessages([
             {
                 sender: 'ai',
-                text: "Hi, this is Alex calling from our company. I'm reaching out regarding your recent inquiry. Do you have a moment to talk?",
+                text: "Hi, this is Riley from Netro Scale. Thanks for taking my call — do you have a quick moment to talk?",
             },
         ]);
     };
@@ -176,10 +176,10 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                 <div className={styles.header}>
                     <div className={styles.titleInfo}>
                         <div className={styles.titleRow}>
-                            <h2 className={styles.title}>🧪 Marvik AI Voice Simulator Studio</h2>
+                            <h2 className={styles.title}>🧪 Netro Scale AI Voice Simulator</h2>
                             <span className={styles.liveBadge}>● LIVE SPEAKER READY</span>
                         </div>
-                        <span className={styles.subtitle}>Test objections, AI voice audio, and live transfer triggers instantly</span>
+                        <span className={styles.subtitle}>Test caller questions, AI voice audio, and live transfer triggers instantly</span>
                     </div>
                     <div className={styles.headerActions}>
                         <label className={styles.autoSpeakToggle} title="Automatically play AI voice out loud">
@@ -214,9 +214,9 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                         </button>
                     </div>
 
-                    {/* Quick Objection Chips */}
+                    {/* Quick test question chips */}
                     <div className={styles.chipsSection}>
-                        <span className={styles.chipsLabel}>Quick Objection Test Chips:</span>
+                        <span className={styles.chipsLabel}>Quick test questions:</span>
                         <div className={styles.chipsGrid}>
                             {SAMPLE_OBJECTIONS.map((obj, i) => (
                                 <button
@@ -297,7 +297,7 @@ export const AISimulatorModal: React.FC<AISimulatorModalProps> = ({
                     <input
                         type="text"
                         className={styles.input}
-                        placeholder="Type what the customer says (e.g. 'Is this a scam? Why do I pay?')..."
+                        placeholder="Type what the caller says (e.g. 'What are your hours?')..."
                         value={inputText}
                         onChange={(e) => setInputText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}

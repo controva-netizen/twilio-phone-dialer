@@ -51,13 +51,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
     return (
         <aside className={`${styles.sidebar} ${isOpen ? styles.open : ''}`}>
-            {/* Marvik Dialer Logo Header */}
+            {/* Netro Scale Logo Header */}
             <div className={styles.brandHeader}>
                 <div className={styles.brandLogo}>
-                    <MarvikLogoIcon />
+                    <NetroScaleLogoIcon />
                 </div>
                 <div className={styles.brandInfo}>
-                    <span className={styles.brandName}>Marvik Dialer</span>
+                    <span className={styles.brandName}>Netro Scale</span>
                     <span className={styles.brandTag}>VoIP Phone System</span>
                 </div>
             </div>
@@ -112,7 +112,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 }
 
 // Icons
-function MarvikLogoIcon() {
+function NetroScaleLogoIcon() {
     return (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path

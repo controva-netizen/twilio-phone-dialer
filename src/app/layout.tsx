@@ -15,9 +15,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "TwilioPhone - Browser-Based Calling",
-  description: "Make and receive phone calls directly from your browser using Twilio Voice SDK",
-  keywords: ["twilio", "phone", "voip", "webrtc", "calling"],
+  title: "Netro Scale",
+  description: "Netro Scale — browser-based calling, AI voice agent, and call management.",
+  keywords: ["netro scale", "phone", "voip", "webrtc", "calling", "ai voice agent"],
 };
 
 export default function RootLayout({

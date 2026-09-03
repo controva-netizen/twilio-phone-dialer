@@ -36,7 +36,7 @@ export default function LoginPage() {
             <div className={styles.card}>
                 <div className={styles.logo}>
                     <PhoneIcon />
-                    <h1>TwilioPhone</h1>
+                    <h1>Netro Scale</h1>
                 </div>
 
                 <p className={styles.subtitle}>

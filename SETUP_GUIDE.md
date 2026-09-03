@@ -1,4 +1,4 @@
-# TwilioPhone - Setup Guide
+# Netro Scale - Setup Guide
 
 Browser-based calling app built with Next.js 16, Twilio Voice SDK, and Supabase.
 
@@ -34,7 +34,7 @@ From the [Twilio Console](https://console.twilio.com):
 ### 1.3 Create a TwiML App
 
 1. Go to **Voice → TwiML Apps → Create**
-2. Name: `TwilioPhone`
+2. Name: `Netro Scale`
 3. **Voice Request URL**: `https://YOUR-NGROK-URL/api/twilio/webhook`
 4. Method: **POST**
 5. Save and copy the **SID** (starts with `AP`)

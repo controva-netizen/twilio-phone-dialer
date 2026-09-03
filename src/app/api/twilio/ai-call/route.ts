@@ -82,7 +82,7 @@ async function handleEntry(request: NextRequest): Promise<NextResponse> {
             }
             return twimlResponse(`
                 <Response>
-                    <Say voice="Polly.Joanna" language="en-US">Hello, this is the Consumer Award Resolution Bureau regarding claim file US-9482. Please call us back at ${escapeXml(callerId)}.</Say>
+                    <Say voice="Polly.Joanna" language="en-US">Hi, this is Netro Scale returning your inquiry. We missed you, so please call us back at ${escapeXml(callerId)} when it is convenient. Thank you.</Say>
                     <Hangup/>
                 </Response>
             `);

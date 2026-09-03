@@ -1,4 +1,4 @@
-# TwilioPhone - Call Flow Diagrams
+# Netro Scale - Call Flow Diagrams
 
 ## Login & Authentication
 

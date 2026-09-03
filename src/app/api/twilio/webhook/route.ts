@@ -158,7 +158,7 @@ async function handleOutgoingCall(to: string, from: string, params: Record<strin
     // 0. Special: In-Browser AI Test Call (*99 or 'test')
     if (to === '*99' || to === '99' || to.toLowerCase() === 'test' || callMode === 'test') {
         console.log(`[Twilio Webhook] In-Browser AI Voice Test Call connected for user ${userId}`)
-        const greeting = `Hello! This is your Marvik AI Voice Agent test line. I am running live with your saved script and knowledge base. Go ahead and test a question with me right now!`
+        const greeting = `Hello! This is your Netro Scale AI voice agent test line. I am running live with your saved script and knowledge base. Go ahead and ask me a question.`
         const turnActionUrl = `${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(userId || 'user')}&amp;callerId=%2B13072076444&amp;turnCount=1`
 
         return twimlResponse(`
@@ -307,20 +307,31 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     const agentUserId = userId || 'user'
     const appUrl = await getPublicAppUrl(request)
-    const callerId = to || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444'
 
-    console.log(`[Twilio Webhook] Incoming call → routing through AI agent for user ${agentUserId}`)
+    // Caller ID shown on the softphone = the person actually calling in.
+    const inboundCallerId = formatE164(from) || from || to || process.env.TWILIO_DEFAULT_NUMBER || '+13072076444'
 
-    const aiEntryUrl = `${appUrl}/api/twilio/ai-call?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}`
+    if (!userId) {
+        // No user is mapped to this number and there is nobody to ring.
+        console.warn(`[Twilio Webhook] Incoming call to ${to} but no user is mapped to a phone number`)
+        return twimlResponse(`
+            <Response>
+                <Say voice="Polly.Joanna">Thank you for calling. No one is available to take your call right now. Please try again later.</Say>
+                <Hangup/>
+            </Response>
+        `)
+    }
 
-    // By default record incoming calls if enabled or default
+    console.log(`[Twilio Webhook] Incoming call from ${from} → ringing softphone for user ${agentUserId}`)
+
+    // Record the call if the number has recording enabled (default on).
     const recordingEnabled = numberRecord ? !!numberRecord.call_recording_enabled : true
     const recordAttr = recordingEnabled ? ' record="record-from-answer-dual"' : ''
     const recordCallbackAttr = recordingEnabled
-        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${encodeURIComponent(agentUserId)}"`
+        ? ` recordingStatusCallback="${appUrl}/api/twilio/recording-status?user_id=${encodeURIComponent(agentUserId)}" recordingStatusCallbackEvent="completed"`
         : ''
-    
-    // Voicemail fallback if agent softphone is unavailable or times out
+
+    // Voicemail fallback if the softphone does not answer within the timeout.
     const voicemailEnabled = numberRecord ? !!numberRecord.voicemail_enabled : true
     const actionAttr = voicemailEnabled
         ? ` action="${appUrl}/api/twilio/voicemail?user_id=${encodeURIComponent(agentUserId)}&amp;from=${encodeURIComponent(from || '')}"`
@@ -328,9 +339,18 @@ async function handleIncomingCall(to: string, from: string, request: NextRequest
 
     return twimlResponse(`
         <Response>
-            <Dial answerOnBridge="true" callerId="${callerId}"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="30">
-                <Number url="${aiEntryUrl}">${from}</Number>
+            <Dial answerOnBridge="true" callerId="${inboundCallerId}"${recordAttr}${recordCallbackAttr}${actionAttr} timeout="25">
+                <Client>${escapeXml(agentUserId)}</Client>
             </Dial>
         </Response>
     `)
+}
+
+function escapeXml(unsafe: string): string {
+    return unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
 }

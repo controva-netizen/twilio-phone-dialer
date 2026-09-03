@@ -1,4 +1,4 @@
-// Multi-Provider LLM Engine with Instant Fallbacks (Cerebras -> Replicate -> DeepSeek -> Rule Engine)
+// Multi-provider LLM engine with fallbacks (Cerebras -> Replicate -> DeepSeek -> OpenAI -> rule engine)
 
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
@@ -126,61 +126,39 @@ async function callOpenAICompatible(messages: ChatMessage[], apiKey: string, bas
     }
 }
 
-// 4. Rule-Based Fallback Engine (guarantees call stays alive and handles objections/transfers)
+// 4. Rule-Based Fallback Engine
+// Used only when every configured LLM provider is unreachable. It keeps the call
+// graceful and hands off to a human rather than trying to improvise answers.
 function generateRuleFallback(userMessage: string): string {
     const text = userMessage.toLowerCase();
 
-    // 1. Transfer request
-    if (text.includes('human') || text.includes('person') || text.includes('agent') || text.includes('specialist') || text.includes('talk to someone') || text.includes('representative') || text.includes('supervisor') || text.includes('transfer')) {
-        return "Of course! Let me connect you directly with our senior specialist right now. [TRANSFER]";
+    // 1. Explicit request for a person
+    if (
+        text.includes('human') || text.includes('person') || text.includes('agent') ||
+        text.includes('representative') || text.includes('supervisor') || text.includes('manager') ||
+        text.includes('talk to someone') || text.includes('real person') || text.includes('transfer')
+    ) {
+        return "Of course — let me connect you with a member of our team. [TRANSFER]";
     }
 
-    // 2. Scam objection
-    if (text.includes('scam') || text.includes('fake') || text.includes('fraud') || text.includes('legit')) {
-        return "I completely understand your caution, but this is a federally regulated unclaimed asset recovery for an $850,000 certified check. The mandatory $1,500 registration fee unlocks the escrow release. Let me connect you with our officer to review the file details. [TRANSFER]";
+    // 2. Not interested / do-not-call / wants to end the call
+    if (
+        text.includes('stop calling') || text.includes('not interested') || text.includes('take me off') ||
+        text.includes('do not call') || text.includes("don't call") || text.includes('remove me')
+    ) {
+        return "Understood, I'll take you off our list. Sorry to bother you, and have a good day.";
     }
 
-    // 3. Why pay / deduct from winnings
-    if (text.includes('deduct') || text.includes('take it out') || text.includes('pay first') || text.includes('why do i have to pay') || text.includes('why pay')) {
-        return "Your $850,000 prize is held in a federally locked escrow account that cannot be touched until registered. Federal regulations prohibit commingling prize funds with administrative fees. Let me connect you with our senior specialist to explain. [TRANSFER]";
+    // 3. Caller is unsure who we are
+    if (
+        text.includes('who is this') || text.includes('who are you') || text.includes('what company') ||
+        text.includes('what is this') || text.includes("what's this about") || text.includes('why are you calling')
+    ) {
+        return "This is Riley calling from Netro Scale about your recent inquiry. Let me bring in a team member who can walk you through the details. [TRANSFER]";
     }
 
-    // 4. Cannot afford / don't have money
-    if (text.includes('afford') || text.includes("don't have") || text.includes('no money') || text.includes('too expensive')) {
-        return "I hear you, and that is understandable. Putting it in perspective, a $1,500 registration fee releases a certified check for $850,000, and the claims department accepts major credit cards. Let me connect you with a specialist to discuss options. [TRANSFER]";
-    }
-
-    // 5. Send in writing / official letter
-    if (text.includes('in writing') || text.includes('mail') || text.includes('letter') || text.includes('paperwork') || text.includes('send me')) {
-        return "You will receive a complete physical claims package with bond documents and tax forms overnighted once your claim identity is registered. Let me connect you with our specialist to get your package moving. [TRANSFER]";
-    }
-
-    // 6. Talk to lawyer / family
-    if (text.includes('lawyer') || text.includes('son') || text.includes('daughter') || text.includes('family') || text.includes('wife') || text.includes('husband') || text.includes('attorney')) {
-        return "That is very smart, and I encourage you to share your Claim Number with them. Since the file closes at the end of this week, let me connect you with our specialist so you have all the exact reference details. [TRANSFER]";
-    }
-
-    // 7. How did you get my number / privacy
-    if (text.includes('how did you get') || text.includes('my number') || text.includes('privacy') || text.includes('who are you')) {
-        return "I am Alex from the Consumer Award Resolution Bureau. The prize administrator was legally required to surrender your winner file to our asset recovery division when they could not locate you. Let me connect you with our specialist. [TRANSFER]";
-    }
-
-    // 8. What is this call about / prize details
-    if (text.includes('what is this') || text.includes('how much') || text.includes('prize') || text.includes('award') || text.includes('check')) {
-        return "This is regarding an unclaimed certified check for $850,000 in your name from a national sweepstakes. The file has been flagged for final review before forfeiture. Let me connect you with our specialist right now. [TRANSFER]";
-    }
-
-    // 9. Negative / Refusal
-    if (text.includes('stop calling') || text.includes('not interested') || text.includes('take me off') || text.includes('do not call')) {
-        return "I understand. I will note your file accordingly. Have a great rest of your day.";
-    }
-
-    // 10. Default affirmative / conversational turn
-    if (text.includes('yes') || text.includes('sure') || text.includes('okay') || text.includes('go ahead') || text.includes('tell me more')) {
-        return "Wonderful. Your file shows a certified check for $850,000 waiting in escrow. Let me connect you directly with our senior specialist right now to walk you through the claim verification. [TRANSFER]";
-    }
-
-    return "Thank you for sharing that. To make sure your $850,000 claim file is handled accurately, let me connect you directly with our senior recovery specialist right now. [TRANSFER]";
+    // 4. Anything else: don't guess — hand off to a person.
+    return "Thanks for that. Let me connect you with someone on our team who can help. [TRANSFER]";
 }
 
 // Master LLM Dispatcher with Multi-Provider Fallbacks
@@ -234,9 +212,8 @@ export async function generateAIResponse(
 
     // Clean text and check transfer triggers
     const cleanText = outputText.trim();
-    const shouldTransfer = cleanText.includes('[TRANSFER]') || 
-                           cleanText.toLowerCase().includes('connect you directly') ||
-                           cleanText.toLowerCase().includes('transfer you now');
+    const shouldTransfer = cleanText.includes('[TRANSFER]') ||
+                           /connect you (with|to) (a|our|the)/i.test(cleanText);
 
     // Remove [TRANSFER] tag from spoken audio text
     const spokenText = cleanText.replace(/\[TRANSFER\]/gi, '').trim();

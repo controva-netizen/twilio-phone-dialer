@@ -137,7 +137,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
 
             return twimlResponse(`
                 <Response>
-                    <Say voice="Polly.Joanna" language="en-US">Hello, this is Consumer Award Resolution Bureau regarding claim file US-9482. Please call us back at ${escapeXml(callerId)}.</Say>
+                    <Say voice="Polly.Joanna" language="en-US">Hi, this is Netro Scale returning your inquiry. Please call us back at ${escapeXml(callerId)} when it is convenient. Thank you.</Say>
                     <Hangup/>
                 </Response>
             `);
@@ -162,7 +162,7 @@ async function handleTurn(request: NextRequest): Promise<NextResponse> {
             return twimlResponse(`
                 <Response>
                     <Gather input="speech dtmf" timeout="4" action="${appUrl}/api/twilio/ai-call/turn?agentUserId=${encodeURIComponent(agentUserId)}&amp;callerId=${encodeURIComponent(callerId)}&amp;leadName=${encodeURIComponent(leadName)}&amp;turnCount=${turnCount + 1}&amp;history=${encodeURIComponent(JSON.stringify(history))}">
-                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Are you able to hear me, or would you like me to connect you with a specialist?</Say>
+                        <Say voice="Polly.Joanna" language="en-US">I am still on the line. Can you hear me all right, or would you like me to connect you with a member of our team?</Say>
                     </Gather>
                 </Response>
             `);
